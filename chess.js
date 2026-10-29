@@ -1,690 +1,520 @@
-(() => {
-  const $ = id => document.getElementById(id);
-
-  const SYMBOLS = {
-    w: { p: "♙", r: "♖", n: "♘", b: "♗", q: "♕", k: "♔" },
-    b: { p: "♟", r: "♜", n: "♞", b: "♝", q: "♛", k: "♚" }
+(function () {
+  "use strict";
+ 
+  var $ = function (id) { return document.getElementById(id); };
+  var THEME_KEY = "voiceChessDigitalTheme";
+ 
+  /* ================================================================
+     LANGUAGE FOLLOW-THROUGH
+     Makes speech recognition (mic) and speech output (voice) use the
+     language chosen in the page's #selectVoiceLang dropdown.
+     ================================================================ */
+ 
+  var EXTRA_LANGS = [
+    ["en-US", "English (US)"],
+    ["en-IN", "English (India)"],
+    ["hi-IN", "हिन्दी"],
+    ["ta-IN", "தமிழ்"],
+    ["te-IN", "తెలుగు"],
+    ["bn-IN", "বাংলা"],
+    ["mr-IN", "मराठी"],
+    ["gu-IN", "ગુજરાતી"],
+    ["kn-IN", "ಕನ್ನಡ"],
+    ["ml-IN", "മലയാളം"],
+    ["pa-IN", "ਪੰਜਾਬੀ"],
+    ["es-ES", "Español"],
+    ["de-DE", "Deutsch"],
+    ["fr-FR", "Français"],
+    ["ja-JP", "日本語"]
+  ];
+ 
+  var BARE = {
+    en: "en-US", hi: "hi-IN", ta: "ta-IN", te: "te-IN", bn: "bn-IN",
+    mr: "mr-IN", gu: "gu-IN", kn: "kn-IN", ml: "ml-IN", pa: "pa-IN",
+    es: "es-ES", de: "de-DE", fr: "fr-FR", ja: "ja-JP"
   };
-
-  const NAMES = {
-    p: "pawn", r: "rook", n: "knight",
-    b: "bishop", q: "queen", k: "king"
+ 
+  var VOICE_FALLBACK = {
+    "mr-IN": ["hi-IN"]
   };
-
-  let game, selected = null, flipped = false;
-  let recognition = null, listening = false;
-  let foundSquare = null, lastMove = null;
-
-  const boardEl = $("board");
-
-  function initGame() {
-    if (typeof Chess !== "function") {
-      $("status").textContent =
-        "Chess rules library could not load. Check your internet connection and reload.";
-      $("engineBadge").textContent = "Library unavailable";
-      return;
+ 
+  var lastRecognition = null;
+ 
+  function selectedLang() {
+    var sel = $("selectVoiceLang");
+    if (!sel) return null;
+    var v = String(sel.value || "").trim();
+    if (/^hinglish$/i.test(v)) return "hi-IN";
+    if (BARE[v.toLowerCase()]) return BARE[v.toLowerCase()];
+    if (/^[a-z]{2,3}-[A-Za-z0-9]{2,4}$/.test(v)) return v;
+    return null;
+  }
+ 
+  function pickVoiceFor(lang) {
+    var voices = [];
+    try { voices = window.speechSynthesis.getVoices() || []; } catch (e) {}
+    var want = lang.toLowerCase();
+    var base = want.split("-")[0];
+    var exact = null, partial = null;
+    for (var i = 0; i < voices.length; i++) {
+      var vl = String(voices[i].lang || "").replace("_", "-").toLowerCase();
+      if (vl === want) { exact = voices[i]; break; }
+      if (!partial && vl.indexOf(base) === 0) partial = voices[i];
     }
-
-    game = new Chess();
-    selected = null;
-    foundSquare = null;
-    lastMove = null;
-
-    render();
-    updateUI();
-    say("New game. White to move.");
+    return exact || partial || null;
   }
-
-  function squareOrder() {
-    const files = flipped
-      ? ["h", "g", "f", "e", "d", "c", "b", "a"]
-      : ["a", "b", "c", "d", "e", "f", "g", "h"];
-
-    const ranks = flipped
-      ? [1, 2, 3, 4, 5, 6, 7, 8]
-      : [8, 7, 6, 5, 4, 3, 2, 1];
-
-    return ranks.flatMap(r => files.map(f => f + r));
+ 
+  /* ================================================================
+     ECHO GUARD: the mic must never listen while the app is speaking
+     ================================================================ */
+ 
+  var synth = window.speechSynthesis;
+  var TAIL_MS = 800;        // keep the mic closed this long after speech ends
+  var quietUntil = 0;       // timestamp until which we treat the room as "noisy"
+  var wantMic = false;      // does the app/user want the mic on?
+  var micRunning = false;   // is the recognizer actually running right now?
+  var internalStop = false; // true while WE (not the app) stop the mic
+  var origRecStart = null, origRecStop = null, origRecAbort = null;
+ 
+  function isBusy() {
+    try { if (synth && (synth.speaking || synth.pending)) return true; } catch (e) {}
+    return Date.now() < quietUntil;
   }
-
-  function render() {
-    if (!game) return;
-
-    boardEl.innerHTML = "";
-
-    const legal = selected
-      ? game.moves({ square: selected, verbose: true })
-      : [];
-
-    for (const sq of squareOrder()) {
-      const p = game.get(sq);
-      const btn = document.createElement("button");
-
-      btn.type = "button";
-      btn.className =
-        "sq " +
-        (((Number(sq[1]) + sq.charCodeAt(0) - 97) % 2 === 0)
-          ? "light"
-          : "dark");
-
-      btn.setAttribute(
-        "aria-label",
-        sq +
-        (p
-          ? `, ${p.color === "w" ? "white" : "black"} ${NAMES[p.type]}`
-          : ", empty") +
-        (selected ? `, selected source ${selected}` : "")
-      );
-
-      if (selected === sq) btn.classList.add("selected");
-
-      if (lastMove && (lastMove.from === sq || lastMove.to === sq)) {
-        btn.classList.add("last");
+ 
+  // Drops any "result" event that arrives while the app is speaking.
+  function guardResults(rec) {
+    if (rec.__vcGuard) return;
+    rec.__vcGuard = true;
+ 
+    var handler = rec.onresult || null;
+    try { rec.onresult = null; } catch (e) {}
+ 
+    var nativeAdd = rec.addEventListener.bind(rec);
+ 
+    // Catch listeners added with addEventListener("result", ...)
+    rec.addEventListener = function (type, fn, opts) {
+      if (type === "result" && typeof fn === "function") {
+        return nativeAdd(type, function (e) {
+          if (isBusy()) return;
+          return fn.call(this, e);
+        }, opts);
       }
-
-      if (foundSquare === sq) btn.classList.add("king-found");
-
-      if (legal.some(m => m.to === sq)) {
-        btn.classList.add(p ? "capture" : "legal");
+      return nativeAdd(type, fn, opts);
+    };
+ 
+    // Catch the "onresult = function" style
+    Object.defineProperty(rec, "onresult", {
+      configurable: true,
+      get: function () { return handler; },
+      set: function (fn) { handler = fn; }
+    });
+    nativeAdd("result", function (e) {
+      if (isBusy()) return;
+      if (typeof handler === "function") handler.call(rec, e);
+    });
+ 
+    nativeAdd("start", function () { micRunning = true; });
+    nativeAdd("end", function () { micRunning = false; });
+  }
+ 
+  function realStart(rec) {
+    if (micRunning) return;
+    try { origRecStart.call(rec); micRunning = true; } catch (e) {}
+  }
+ 
+  function pauseMic() {
+    if (!lastRecognition || !micRunning) return;
+    internalStop = true;
+    try { origRecAbort.call(lastRecognition); } catch (e) {}
+    internalStop = false;
+    micRunning = false;
+  }
+ 
+  function patchRecognition() {
+    var seen = [];
+    ["SpeechRecognition", "webkitSpeechRecognition"].forEach(function (name) {
+      var Ctor = window[name];
+      if (!Ctor || !Ctor.prototype || seen.indexOf(Ctor.prototype) !== -1) return;
+      seen.push(Ctor.prototype);
+ 
+      origRecStart = Ctor.prototype.start;
+      origRecStop  = Ctor.prototype.stop;
+      origRecAbort = Ctor.prototype.abort;
+ 
+      Ctor.prototype.start = function () {
+        lastRecognition = this;
+        guardResults(this);
+        wantMic = true;
+        var lang = selectedLang();
+        if (lang) { try { this.lang = lang; } catch (e) {} }
+        // If the app is talking, don't start now; the watcher below
+        // will start the mic as soon as it is quiet.
+        if (isBusy() || micRunning) return;
+        micRunning = true;
+        return origRecStart.apply(this, arguments);
+      };
+ 
+      Ctor.prototype.stop = function () {
+        if (!internalStop) wantMic = false;   // user/app really turned it off
+        return origRecStop.apply(this, arguments);
+      };
+ 
+      Ctor.prototype.abort = function () {
+        if (!internalStop) wantMic = false;
+        return origRecAbort.apply(this, arguments);
+      };
+    });
+ 
+    // Watcher: reopen the mic once the app has finished speaking.
+    setInterval(function () {
+      if (wantMic && lastRecognition && !micRunning && !isBusy()) {
+        realStart(lastRecognition);
       }
-
-      const coord = document.createElement("span");
-      coord.className = "coord";
-      coord.textContent = sq;
-      btn.appendChild(coord);
-
-      if (p) {
-        const piece = document.createElement("span");
-        piece.className =
-          "piece " + (p.color === "w" ? "white-piece" : "black-piece");
-        piece.textContent = SYMBOLS[p.color][p.type];
-        piece.setAttribute("aria-hidden", "true");
-        btn.appendChild(piece);
-      }
-
-      btn.addEventListener("click", () => clickSquare(sq));
-      boardEl.appendChild(btn);
-    }
-
-    $("ranks").innerHTML = (
-      flipped
-        ? [1, 2, 3, 4, 5, 6, 7, 8]
-        : [8, 7, 6, 5, 4, 3, 2, 1]
-    ).map(n => `<span>${n}</span>`).join("");
-
-    $("files").innerHTML = (
-      flipped
-        ? ["h", "g", "f", "e", "d", "c", "b", "a"]
-        : ["a", "b", "c", "d", "e", "f", "g", "h"]
-    ).map(f => `<span>${f}</span>`).join("");
+    }, 250);
   }
-
-  function clickSquare(sq) {
-    if (!game) return;
-
-    const p = game.get(sq);
-
-    if (!selected) {
-      if (!p) {
-        setStatus("That square is empty. Choose a piece first.");
-        return;
-      }
-
-      if (p.color !== game.turn()) {
-        setStatus(
-          `It is ${game.turn() === "w" ? "White" : "Black"}'s turn. Select that side's piece.`
-        );
-        return;
-      }
-
-      selected = sq;
-      foundSquare = null;
-      render();
-
-      setStatus(
-        `${sq}: ${p.color === "w" ? "White" : "Black"} ${NAMES[p.type]} selected. Choose a destination.`
-      );
-      return;
-    }
-
-    if (selected === sq) {
-      selected = null;
-      render();
-      setStatus("Selection cleared.");
-      return;
-    }
-
-    const from = selected;
-    selected = null;
-
-    const result = makeMove(from, sq);
-
-    if (!result && p && p.color === game.turn()) {
-      selected = sq;
-      render();
-      setStatus(`${sq} selected. Choose a legal destination.`);
-    }
-  }
-
-  function makeMove(from, to, promotion = "q") {
-    const result = game.move({ from, to, promotion });
-
-    if (!result) {
-      render();
-      setStatus(
-        `Illegal move ${from} to ${to}."`
-      );
-      return false;
-    }
-
-    lastMove = { from: result.from, to: result.to };
-    foundSquare = null;
-
-    render();
-    updateUI();
-
-    const message =
-      `${result.color === "w" ? "White" : "Black"} ` +
-      `${NAMES[result.piece]} ${result.from} to ${result.to}` +
-      (result.captured ? " capturing " + NAMES[result.captured] : "") +
-      (result.promotion ? " promoting to " + NAMES[result.promotion] : "") +
-      ".";
-
-    setStatus(message + " " + gameStatus());
-    say(message + " " + gameStatus());
-
-    return true;
-  }
-
-  function gameStatus() {
-    if (game.in_checkmate()) return "Checkmate.";
-    if (game.in_draw()) return "Draw.";
-
-    if (game.in_check()) {
-      return `${game.turn() === "w" ? "White" : "Black"} is in check.`;
-    }
-
-    return `${game.turn() === "w" ? "White" : "Black"} to move.`;
-  }
-
-  function updateUI() {
-    $("turnLabel").textContent = game.game_over()
-      ? "Game over"
-      : `${game.turn() === "w" ? "White" : "Black"} to move`;
-
-    $("gameLabel").textContent = gameStatus();
-
-    const hist = game.history();
-
-    if (!hist.length) {
-      $("history").innerHTML = "<li>No moves yet.</li>";
-    } else {
-      let rows = "";
-
-      for (let i = 0; i < hist.length; i += 2) {
-        rows +=
-          `<li><strong>${Math.floor(i / 2) + 1}.</strong> ${hist[i]}` +
-          (hist[i + 1] ? ` &nbsp; ${hist[i + 1]}` : "") +
-          "</li>";
-      }
-
-      $("history").innerHTML = rows;
-    }
-  }
-
-  function setStatus(message) {
-    $("status").textContent = message;
-  }
-
-  function say(text) {
-    if (!("speechSynthesis" in window)) return;
-
-    if ($("speechSynthCheck") && !$("speechSynthCheck").checked) return;
-
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.95;
-    utterance.pitch = 1;
-    utterance.lang = "en-US";
-
-    window.speechSynthesis.speak(utterance);
-  }
-
-  function findKing(color) {
-    const board = game.board();
-
-    for (let r = 0; r < 8; r++) {
-      for (let c = 0; c < 8; c++) {
-        const p = board[r][c];
-
-        if (p && p.type === "k" && p.color === color) {
-          const sq = "abcdefgh"[c] + (8 - r);
-
-          foundSquare = sq;
-          render();
-
-          const msg =
-            `Your ${color === "w" ? "white" : "black"} king is on ${sq}. ` +
-            "The square is highlighted in gold.";
-
-          setStatus(msg);
-          say(msg);
-          return;
+ 
+  function patchSpeech() {
+    if (!window.SpeechSynthesis || !window.SpeechSynthesis.prototype) return;
+    var origSpeak = window.SpeechSynthesis.prototype.speak;
+    window.SpeechSynthesis.prototype.speak = function (utterance) {
+      try {
+        var lang = selectedLang();
+        if (lang && utterance) {
+          utterance.lang = lang;
+          var voice = pickVoiceFor(lang);
+          if (!voice && VOICE_FALLBACK[lang]) {
+            for (var f = 0; f < VOICE_FALLBACK[lang].length && !voice; f++) {
+              voice = pickVoiceFor(VOICE_FALLBACK[lang][f]);
+            }
+            if (voice) utterance.lang = voice.lang;
+          }
+          if (voice) utterance.voice = voice;
         }
+      } catch (e) {}
+ 
+      // Close the mic BEFORE any sound comes out, and keep it closed
+      // for a short tail after the speech ends.
+      try {
+        if (utterance) {
+          var markDone = function () { quietUntil = Date.now() + TAIL_MS; };
+          utterance.addEventListener("end", markDone);
+          utterance.addEventListener("error", markDone);
+        }
+        quietUntil = Date.now() + TAIL_MS;
+        pauseMic();
+      } catch (e) {}
+ 
+      return origSpeak.call(this, utterance);
+    };
+  }
+ 
+  function addLanguageOptions() {
+    var sel = $("selectVoiceLang");
+    if (!sel) return;
+    var have = {};
+    for (var i = 0; i < sel.options.length; i++) have[sel.options[i].value] = true;
+    EXTRA_LANGS.forEach(function (pair) {
+      if (have[pair[0]]) return;
+      var opt = document.createElement("option");
+      opt.value = pair[0];
+      opt.textContent = pair[1];
+      sel.appendChild(opt);
+    });
+  }
+ 
+  function hookLanguageSelect() {
+    var sel = $("selectVoiceLang");
+    if (!sel) return;
+    sel.addEventListener("change", function () {
+      // Restart the mic so it picks up the new language. This is an
+      // internal stop, so wantMic stays true and the watcher reopens it.
+      if (lastRecognition) {
+        internalStop = true;
+        try { lastRecognition.stop(); } catch (e) {}
+        internalStop = false;
       }
-    }
+      try { window.speechSynthesis.getVoices(); } catch (e) {}
+    });
   }
-
-  function describeBoard() {
-    const side = game.turn() === "w" ? "White" : "Black";
-    const pieces = [];
-
-    for (const sq of squareOrder()) {
-      const p = game.get(sq);
-
-      if (p) {
-        pieces.push(
-          `${p.color === "w" ? "White" : "Black"} ${NAMES[p.type]} on ${sq}`
-        );
-      }
-    }
-
-    const msg =
-      `${side} to move. ${gameStatus()} ` +
-      `There are ${pieces.length} pieces on the board. ` +
-      pieces.join(". ") + ".";
-
-    setStatus(msg);
-    say(msg);
-  }
-
-  function legalMoves() {
-    const moves = game.moves({ verbose: true });
-
-    if (!moves.length) {
-      const msg = "There are no legal moves.";
-      setStatus(msg);
-      say(msg);
-      return;
-    }
-
-    const msg =
-      `Legal moves for ${game.turn() === "w" ? "White" : "Black"}: ` +
-      moves.map(m => `${NAMES[m.piece]} ${m.from} to ${m.to}`).join("; ") +
-      ".";
-
-    setStatus(msg);
-    say(msg);
-  }
-
-  function normal(s) {
-    return s.toLowerCase()
-      .replace(/[.,!?;:]/g, " ")
-      .replace(/\bplease\b/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  const FILE_WORDS = {
-    a: "a", alpha: "a",
-    b: "b", bravo: "b",
-    c: "c", charlie: "c",
-    d: "d", delta: "d",
-    e: "e", echo: "e",
-    f: "f", foxtrot: "f",
-    g: "g", golf: "g",
-    h: "h", hotel: "h"
+ 
+  // Debug helper: type vcListVoices() in the browser console.
+  window.vcListVoices = function () {
+    var list = (window.speechSynthesis.getVoices() || []).map(function (v) {
+      return v.lang + "  -  " + v.name;
+    });
+    console.log(list.join("\n"));
+    return list;
   };
-
-  const NUM_WORDS = {
-    one: "1", two: "2", three: "3", four: "4",
-    five: "5", six: "6", seven: "7", eight: "8"
-  };
-
-  function cleanSquareWords(s) {
-    return s
-      .replace(
-        /\b(alpha|bravo|charlie|delta|echo|foxtrot|golf|hotel)\s+(one|two|three|four|five|six|seven|eight)\b/g,
-        (_, f, n) => FILE_WORDS[f] + NUM_WORDS[n]
-      )
-      .replace(
-        /\b([a-h])\s+(one|two|three|four|five|six|seven|eight)\b/g,
-        (_, f, n) => f + NUM_WORDS[n]
-      );
-  }
-
-  function handleCommand(raw) {
-    const s = normal(cleanSquareWords(raw));
-    if (!s) return;
-
-    $("heardText").textContent = `Heard: “${raw}”`;
-
-    if (/\b(help|commands|what can i say)\b/.test(s)) {
-      const msg =
-        "Say a move like e4, knight f3, or move e2 to e4. " +
-        "You can also say where is my king, describe the board, " +
-        "what can I move, undo, new game, read last move, or stop talking.";
-
-      setStatus(msg);
-      say(msg);
-      return;
-    }
-
-    if (/\b(stop talking|be quiet|silence|stop speech)\b/.test(s)) {
-      window.speechSynthesis?.cancel();
-      setStatus("Speech stopped.");
-      return;
-    }
-
-    if (/\b(where is|locate|find)\b/.test(s) && /\bking\b/.test(s)) {
-      let color = game.turn();
-
-      if (/\b(black|opponent|their)\b/.test(s)) color = "b";
-      else if (/\b(white|my|your)\b/.test(s)) color = "w";
-
-      findKing(color);
-      return;
-    }
-
-    if (
-      /\b(describe|read|tell me about|what is on)\b/.test(s) &&
-      /\b(board|position|pieces)\b/.test(s)
-    ) {
-      describeBoard();
-      return;
-    }
-
-    if (/\b(what can i move|legal moves|available moves|possible moves)\b/.test(s)) {
-      legalMoves();
-      return;
-    }
-
-    if (/\b(undo|take back|retract)\b/.test(s)) {
-      const m = game.undo();
-
-      if (m) {
-        lastMove = null;
-        foundSquare = null;
-        selected = null;
-
-        render();
-        updateUI();
-
-        const msg =
-          `Undid ${m.san}. ${game.turn() === "w" ? "White" : "Black"} to move.`;
-
-        setStatus(msg);
-        say(msg);
-      } else {
-        setStatus("There is no move to undo.");
-      }
-
-      return;
-    }
-
-    if (/\b(new game|restart|reset board|start over)\b/.test(s)) {
-      game.reset();
-      selected = null;
-      lastMove = null;
-      foundSquare = null;
-
-      render();
-      updateUI();
-
-      setStatus("New game. White to move.");
-      say("New game. White to move.");
-      return;
-    }
-
-    if (/\b(read last move|last move|what was the last move)\b/.test(s)) {
-      const h = game.history();
-
-      const msg = h.length
-        ? `Last move was ${h[h.length - 1]}.`
-        : "No moves have been played yet.";
-
-      setStatus(msg);
-      say(msg);
-      return;
-    }
-
-    if (/\b(flip board|rotate board)\b/.test(s)) {
-      flipped = !flipped;
-      render();
-
-      setStatus(
-        `Board flipped. ${game.turn() === "w" ? "White" : "Black"} to move.`
-      );
-
-      say("Board flipped.");
-      return;
-    }
-
-    if (/\b(start listening|listen)\b/.test(s)) {
-      startListening();
-      return;
-    }
-
-    if (/\b(stop listening|turn off microphone)\b/.test(s)) {
-      stopListening();
-      return;
-    }
-
-    // Coordinate moves: "e2 to e4", "move e2 e4", or "e2-e4".
-    const coords = s.match(
-      /\b([a-h][1-8])\s*(?:to|two|into|[-,])\s*([a-h][1-8])\b/
-    );
-
-    if (coords) {
-      makeMove(coords[1], coords[2]);
-      return;
-    }
-
-    // Spoken piece and destination, such as "knight f3".
-    const words = s
-      .replace(/^(move|play|make|please move)\s+/, "")
-      .replace(/\s+(please|now)$/, "")
-      .trim();
-
-    const pieceMatch = words.match(
-      /\b(king|queen|rook|bishop|knight|pawn)\s+(?:to\s+)?([a-h][1-8])\b/
-    );
-
-    if (pieceMatch) {
-      const pieceType = {
-        king: "k",
-        queen: "q",
-        rook: "r",
-        bishop: "b",
-        knight: "n",
-        pawn: "p"
-      }[pieceMatch[1]];
-
-      const to = pieceMatch[2];
-
-      const candidates = game.moves({ verbose: true }).filter(
-        m => m.piece === pieceType && m.to === to
-      );
-
-      if (candidates.length === 1) {
-        makeMove(candidates[0].from, to);
-        return;
-      }
-
-      if (candidates.length > 1) {
-        const msg =
-          `More than one ${pieceMatch[1]} can move to ${to}. ` +
-          `Say the starting square, for example move g1 to f3.`;
-
-        setStatus(msg);
-        say(msg);
-        return;
-      }
-    }
-
-    // Standard chess notation, including e4, Nf3 and castling.
-    const sanCandidate = words
-      .replace(/\b(castle kingside|castle king side)\b/g, "O-O")
-      .replace(/\b(castle queenside|castle queen side)\b/g, "O-O-O");
-
-    const possible = game.moves();
-
-    const exact = possible.find(
-      m => m.toLowerCase() === sanCandidate.replace(/0/g, "o").toLowerCase()
-    );
-
-    if (exact) {
-      const result = game.move(exact);
-
-      lastMove = { from: result.from, to: result.to };
-      foundSquare = null;
-
-      render();
-      updateUI();
-
-      const msg =
-        `${result.color === "w" ? "White" : "Black"} played ` +
-        `${result.san}. ${gameStatus()}`;
-
-      setStatus(msg);
-      say(msg);
-      return;
-    }
-
-    const msg =
-      `I heard “${raw}”, but couldn't match it to a legal move or command. ` +
-      `Try “e4”, “knight f3”, or say “help”.`;
-
-    setStatus(msg);
-    say(msg);
-  }
-
-  function startListening() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SR) {
-      setStatus(
-        "Speech recognition is not supported here. Use Chrome or Edge, " +
-        "or type a command in the command box."
-      );
-
-      say("Speech recognition is not supported in this browser.");
-      return;
-    }
-
-    if (listening) return;
-
+ 
+  // Patch right away, before the main app creates its recognition/speech.
+  patchRecognition();
+  patchSpeech();
+ 
+  /* ---------------------------------------------------------------- Theme */
+ 
+  function loadThemePref() {
     try {
-      if (!recognition) {
-        recognition = new SR();
-        recognition.lang = "en-US";
-        recognition.interimResults = false;
-        recognition.continuous = false;
-        recognition.maxAlternatives = 3;
-
-        recognition.onresult = e => {
-          const transcript =
-            e.results[e.results.length - 1][0].transcript;
-
-          handleCommand(transcript);
-        };
-
-        recognition.onerror = e => {
-          setStatus(
-            e.error === "not-allowed"
-              ? "Microphone permission was denied. Allow microphone access in the browser address bar."
-              : `Speech recognition error: ${e.error}. Try again or type a command.`
-          );
-        };
-
-        recognition.onend = () => {
-          listening = false;
-          setMicState(false);
-        };
-      }
-
-      recognition.start();
-      listening = true;
-      setMicState(true);
-
-      setStatus("Listening… say a chess move or ask a question.");
-      $("micBtn").setAttribute("aria-pressed", "true");
+      var saved = localStorage.getItem(THEME_KEY);
+      return saved === null ? true : saved === "on";
     } catch (e) {
-      setStatus("Could not start listening. Wait a moment and try again.");
-      listening = false;
-      setMicState(false);
+      return true;
     }
   }
-
-  function stopListening() {
-    if (recognition && listening) {
-      recognition.stop();
-    }
-
-    listening = false;
-    setMicState(false);
-    setStatus("Microphone stopped.");
+ 
+  function saveThemePref(on) {
+    try { localStorage.setItem(THEME_KEY, on ? "on" : "off"); } catch (e) {}
   }
-
-  function setMicState(on) {
-    $("micState").textContent = on ? "Listening…" : "Microphone off";
-
-    $("micBtn").textContent = on
-      ? "⏹ Stop listening"
-      : "🎙 Start listening";
-
-    $("micBtn").classList.toggle("listening", on);
-    $("micBtn").setAttribute("aria-pressed", String(on));
-  }
-
-  // Button and keyboard events.
-  $("micBtn").addEventListener("click", () => {
-    listening ? stopListening() : startListening();
-  });
-
-  $("sendBtn").addEventListener("click", () => {
-    const value = $("commandInput").value;
-    $("commandInput").value = "";
-    handleCommand(value);
-  });
-
-  $("commandInput").addEventListener("keydown", e => {
-    if (e.key === "Enter") $("sendBtn").click();
-  });
-
-  $("undoBtn").addEventListener("click", () => handleCommand("undo"));
-
-  $("resetBtn").addEventListener("click", () => handleCommand("new game"));
-
-  $("repeatBtn").addEventListener("click", () => {
-    say($("status").textContent);
-  });
-
-  $("flipBtn").addEventListener("click", () => {
-    flipped = !flipped;
-    render();
-  });
-
-  document.addEventListener("keydown", e => {
-    if (
-      e.code === "Space" &&
-      !["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)
-    ) {
-      e.preventDefault();
-      listening ? stopListening() : startListening();
+ 
+  var themeBtn = null;
+ 
+  function applyTheme(on) {
+    document.documentElement.classList.toggle("theme-digital", on);
+    if (themeBtn) {
+      themeBtn.textContent = on ? "🖥️ Theme: Digital" : "☀️ Theme: Classic";
+      themeBtn.setAttribute("aria-pressed", String(on));
     }
-
-    if (e.key === "Escape") {
-      selected = null;
-      foundSquare = null;
-      render();
-    }
-  });
-
-  if ("speechSynthesis" in window) {
-    $("engineBadge").textContent = "Voice output available";
+    saveThemePref(on);
   }
-
-  initGame();
+ 
+  function addThemeButton() {
+    var anchor = $("btnOpenStepModal") || $("btnToggleSound");
+    if (!anchor || !anchor.parentNode) return;
+ 
+    themeBtn = document.createElement("button");
+    themeBtn.type = "button";
+    themeBtn.id = "btnToggleDigitalTheme";
+    themeBtn.className =
+      "inline-flex items-center gap-1 px-2.5 py-2 rounded-xl font-medium text-xs " +
+      "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition";
+    themeBtn.title = "Switch between the digital and classic look";
+    themeBtn.addEventListener("click", function () {
+      applyTheme(!document.documentElement.classList.contains("theme-digital"));
+    });
+    anchor.parentNode.appendChild(themeBtn);
+  }
+ 
+  /* --------------------------------------------------------- Digital clocks */
+ 
+  var clockEls = {};
+  var used = { w: 0, b: 0 };
+  var lastTick = Date.now();
+  var lastMoveCount = 0;
+ 
+  function pad(n) { return n < 10 ? "0" + n : String(n); }
+ 
+  function formatClock(ms) {
+    var total = Math.floor(ms / 1000);
+    var h = Math.floor(total / 3600);
+    var m = Math.floor((total % 3600) / 60);
+    var s = total % 60;
+    return h > 0 ? h + ":" + pad(m) + ":" + pad(s) : pad(m) + ":" + pad(s);
+  }
+ 
+  function setTime(el, text) {
+    if (!el) return;
+    el.textContent = text;
+    el.setAttribute("data-ghost", text.replace(/\d/g, "8"));
+  }
+ 
+  function buildClocks() {
+    var board = $("boardWrapper");
+    if (!board || !board.parentNode) return;
+ 
+    var wrap = document.createElement("div");
+    wrap.className = "dg-clocks";
+    wrap.setAttribute("aria-hidden", "true");
+    wrap.innerHTML =
+      '<div class="dg-clock" id="dgClockW">' +
+        '<div class="dg-clock-label"><span class="dg-pip"></span>White</div>' +
+        '<div class="dg-time" data-ghost="88:88">00:00</div>' +
+      "</div>" +
+      '<div class="dg-moves">' +
+        '<div class="dg-clock-label">Moves</div>' +
+        '<div class="dg-time" id="dgMoves" data-ghost="88">00</div>' +
+      "</div>" +
+      '<div class="dg-clock" id="dgClockB">' +
+        '<div class="dg-clock-label"><span class="dg-pip"></span>Black</div>' +
+        '<div class="dg-time" data-ghost="88:88">00:00</div>' +
+      "</div>";
+ 
+    board.parentNode.insertBefore(wrap, board);
+ 
+    clockEls.w = $("dgClockW");
+    clockEls.b = $("dgClockB");
+    clockEls.wTime = clockEls.w.querySelector(".dg-time");
+    clockEls.bTime = clockEls.b.querySelector(".dg-time");
+    clockEls.moves = $("dgMoves");
+  }
+ 
+  function gameScreenVisible() {
+    var g = $("screenGame");
+    return !!g && !g.classList.contains("hidden");
+  }
+ 
+  function currentSide() {
+    var badge = $("turnIndicatorBadge");
+    var text = badge ? badge.textContent : "";
+    if (/game over/i.test(text)) return null;
+    if (/^\s*black/i.test(text)) return "b";
+    if (/^\s*white/i.test(text)) return "w";
+    return null;
+  }
+ 
+  function readMoveCount() {
+    var label = $("moveCountLabel");
+    var match = label ? /(\d+)/.exec(label.textContent) : null;
+    return match ? parseInt(match[1], 10) : 0;
+  }
+ 
+  function tickClocks() {
+    var now = Date.now();
+    var dt = Math.min(now - lastTick, 60000);
+    lastTick = now;
+ 
+    var count = readMoveCount();
+    if (lastMoveCount > 0 && count === 0) {
+      used.w = 0;
+      used.b = 0;
+    }
+    lastMoveCount = count;
+ 
+    var side = currentSide();
+    if (side && gameScreenVisible()) used[side] += dt;
+ 
+    if (!clockEls.wTime) return;
+    setTime(clockEls.wTime, formatClock(used.w));
+    setTime(clockEls.bTime, formatClock(used.b));
+    setTime(clockEls.moves, pad(count));
+ 
+    var active = gameScreenVisible() ? side : null;
+    clockEls.w.classList.toggle("is-active", active === "w");
+    clockEls.b.classList.toggle("is-active", active === "b");
+  }
+ 
+  /* ------------------------------------------------------------ Status bar */
+ 
+  var bar = {};
+ 
+  function item(label, valueId, ledId) {
+    return (
+      '<span class="dg-item">' +
+        (ledId ? '<span class="dg-led" id="' + ledId + '"></span>' : "") +
+        label +
+        (valueId ? ' <span class="dg-val" id="' + valueId + '">--</span>' : "") +
+      "</span>"
+    );
+  }
+ 
+  function buildStatusBar() {
+    var el = document.createElement("div");
+    el.className = "dg-statusbar";
+    el.setAttribute("role", "status");
+    el.setAttribute("aria-live", "off");
+    el.innerHTML =
+      item("Mic", "dgMicVal", "dgMicLed") +
+      item("Voice", "dgTtsVal", "dgTtsLed") +
+      item("FX", "dgSfxVal", "dgSfxLed") +
+      item("Lang", "dgLangVal", null) +
+      item("Mode", "dgModeVal", null) +
+      item("Link", "dgLanVal", "dgLanLed") +
+      '<span class="dg-item dg-spacer"><span class="dg-realclock" id="dgRealClock">--:--:--</span></span>';
+    document.body.appendChild(el);
+ 
+    ["MicVal", "MicLed", "TtsVal", "TtsLed", "SfxVal", "SfxLed", "LangVal", "ModeVal", "LanVal", "LanLed", "RealClock"]
+      .forEach(function (k) { bar[k] = $("dg" + k); });
+  }
+ 
+  function setLed(led, state) {
+    if (!led) return;
+    led.className = "dg-led" + (state ? " " + state : "");
+  }
+ 
+  function textOf(id) {
+    var el = $(id);
+    return el ? el.textContent : "";
+  }
+ 
+  function refreshStatusBar() {
+    var micBtn = $("btnToggleMic");
+    var listening = !!micBtn && micBtn.classList.contains("mic-pulse");
+    setLed(bar.MicLed, listening ? "rec" : "");
+    if (bar.MicVal) bar.MicVal.textContent = listening ? "REC" : "OFF";
+ 
+    var ttsOn = /ON/.test(textOf("ttsStatusText"));
+    setLed(bar.TtsLed, ttsOn ? "on" : "");
+    if (bar.TtsVal) bar.TtsVal.textContent = ttsOn ? "ON" : "OFF";
+ 
+    var sfxOn = /ON/.test(textOf("sfxStatusText"));
+    setLed(bar.SfxLed, sfxOn ? "on" : "");
+    if (bar.SfxVal) bar.SfxVal.textContent = sfxOn ? "ON" : "OFF";
+ 
+    var langSel = $("selectVoiceLang");
+    if (bar.LangVal && langSel) bar.LangVal.textContent = langSel.value;
+ 
+    var modeSel = $("selectGameMode");
+    var mode = modeSel ? modeSel.value : "";
+    if (bar.ModeVal) {
+      bar.ModeVal.textContent = mode === "lan" ? "LAN" : mode === "ai" ? "VS AI" : mode === "pass" ? "2P LOCAL" : "--";
+    }
+ 
+    var lanText = textOf("lanStatusPill").trim();
+    if (mode !== "lan") {
+      setLed(bar.LanLed, "");
+      if (bar.LanVal) bar.LanVal.textContent = "N/A";
+    } else if (/connected/i.test(lanText)) {
+      setLed(bar.LanLed, "on");
+      if (bar.LanVal) bar.LanVal.textContent = "UP";
+    } else if (/waiting|connecting/i.test(lanText)) {
+      setLed(bar.LanLed, "warn");
+      if (bar.LanVal) bar.LanVal.textContent = "WAIT";
+    } else {
+      setLed(bar.LanLed, "");
+      if (bar.LanVal) bar.LanVal.textContent = "IDLE";
+    }
+ 
+    if (bar.RealClock) {
+      var d = new Date();
+      bar.RealClock.textContent = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+    }
+  }
+ 
+  /* ----------------------------------------------- Announcement glow effect */
+ 
+  function watchAnnouncements() {
+    var el = $("assistantAnnouncement");
+    if (!el || !window.MutationObserver) return;
+ 
+    new MutationObserver(function () {
+      el.classList.remove("dg-flash");
+      void el.offsetWidth;
+      el.classList.add("dg-flash");
+    }).observe(el, { childList: true, characterData: true, subtree: true });
+  }
+ 
+  /* ------------------------------------------------------------------ Start */
+ 
+  function start() {
+    addThemeButton();
+    applyTheme(loadThemePref());
+    buildClocks();
+    buildStatusBar();
+    watchAnnouncements();
+ 
+    addLanguageOptions();
+    hookLanguageSelect();
+ 
+    lastTick = Date.now();
+    tickClocks();
+    refreshStatusBar();
+ 
+    setInterval(tickClocks, 250);
+    setInterval(refreshStatusBar, 400);
+  }
+ 
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start);
+  } else {
+    start();
+  }
 })();
+ 
