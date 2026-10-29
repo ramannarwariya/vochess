@@ -1,187 +1,2464 @@
-
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VoiceChess — Accessible Chess</title>
-<link rel="stylesheet" href="./style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceChess — Simple Voice & LAN Chess</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./op2.css">
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #F8FAFC;
+      color: #0F172A;
+    }
+    .mic-pulse {
+      animation: pulseRing 1.6s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+    }
+    @keyframes pulseRing {
+      0% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+      70% { box-shadow: 0 0 0 12px rgba(220, 38, 38, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: #F1F5F9;
+      border-radius: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #CBD5E1;
+      border-radius: 4px;
+    }
+    canvas {
+      touch-action: manipulation;
+      user-select: none;
+    }
+  </style>
 </head>
-<body>
-<header>
- <div class="brand"><div class="logo" aria-hidden="true">♞</div><div><h1>VoiceChess</h1><div class="tag">VOICE-POWERED CHESS · SPEAK, LISTEN, PLAY</div></div></div>
- <span class="badge" id="engineBadge">Chess rules ready</span>
-</header>
-<main>
-<section class="panel" aria-label="Chess game">
- <div class="board-head"><div><div class="turn" id="turnLabel" aria-live="polite">White to move</div><div class="small" id="gameLabel">Standard starting position</div></div><button id="flipBtn" title="Flip the board orientation">⇅ Flip board</button></div>
- <div class="board-wrap">
-  <div class="ranks" id="ranks" aria-hidden="true"><span>8</span><span>7</span><span>6</span><span>5</span><span>4</span><span>3</span><span>2</span><span>1</span></div>
-  <div class="board" id="board" role="group" aria-label="Chessboard"></div>
-  <div class="files" id="files" aria-hidden="true"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
- </div>
- <div class="status" id="status" role="status" aria-live="polite">Choose a piece and destination, or press the microphone and say <strong>“e4”</strong>.</div>
- <div class="controls"><button class="primary" id="micBtn" aria-pressed="false">🎙 Start listening</button><button id="undoBtn">↶ Undo move</button><button id="resetBtn">⟲ New game</button><button id="repeatBtn">🔊 Repeat status</button></div>
- <div class="notice">Voice input works best in Chrome or Edge. Allow microphone access when prompted. Spoken moves are checked against legal chess rules.</div>
-</section>
-<aside class="side">
- <section class="panel section">
-  <h2>Voice command</h2>
-  <div class="voice-row"><input id="commandInput" type="text" aria-label="Type a voice command" placeholder="Try: where is my king?"><button id="sendBtn">Send</button></div>
-  <div class="voice-row" style="margin-top:9px"><span class="badge" id="micState">Microphone off</span><span class="small" id="heardText" aria-live="polite"></span></div>
-  <p class="notice">You can also type a command here if speech recognition is unavailable.</p>
- </section>
- <section class="panel section">
-  <h2>Try saying…</h2>
-  <div class="help">
-   <div class="cmd"><code>“e4”</code><span>Play a pawn move</span></div>
-   <div class="cmd"><code>“knight f3”</code><span>Move a knight to f3, if legal</span></div>
-   <div class="cmd"><code>“move e2 to e4”</code><span>Move from one square to another</span></div>
-   <div class="cmd"><code>“where is my king?”</code><span>Highlights and announces your king</span></div>
-   <div class="cmd"><code>“where is the black king?”</code><span>Finds the black king</span></div>
-   <div class="cmd"><code>“describe the board”</code><span>Reads the position and whose turn it is</span></div>
-   <div class="cmd"><code>“what can I move?”</code><span>Lists legal moves for the side to move</span></div>
-   <div class="cmd"><code>“undo” / “new game”</code><span>Undo the last move or restart</span></div>
-   <div class="cmd"><code>“read last move”</code><span>Speaks the latest move</span></div>
-   <div class="cmd"><code>“help” / “stop talking”</code><span>Lists commands or stops speech</span></div>
+<body class="min-h-screen flex flex-col bg-slate-50 text-slate-900">
+
+  <!-- Simple Clean Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-5xl mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg shadow-xs" aria-hidden="true">
+          ♔
+        </div>
+        <div>
+          <h1 class="text-base sm:text-lg font-extrabold tracking-tight text-slate-900 flex items-center gap-2">
+            VoiceChess
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">Voice + LAN</span>
+          </h1>
+          <p class="text-xs text-slate-500">Say <span class="font-semibold text-slate-700">"E2 से E4"</span>, <span class="font-semibold text-slate-700">"E2 to E4"</span>, or <span class="font-semibold text-slate-700">"Knight to F3"</span></p>
+        </div>
+        <button id="btnBackToHome" type="button" class="hidden ml-2 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition">
+          ← Change Mode
+        </button>
+      </div>
+
+      <!-- Main Voice & Audio Controls -->
+      <div class="flex flex-wrap items-center gap-1.5">
+        <label for="selectVoiceLang" class="sr-only">Voice Language</label>
+        <select id="selectVoiceLang" class="px-2.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500" title="Speech recognition language">
+          <option value="en-IN" selected>🇮🇳 Hinglish / EN (en-IN)</option>
+          <option value="hi-IN">🇮🇳 हिंदी (hi-IN)</option>
+          <option value="en-US">🌐 English (en-US)</option>
+          <option value="en-US">English (US)</option>
+          <option value="en-IN">English (India)</option>
+          <option value="hi-IN">हिन्दी</option>
+          <option value="ta-IN">தமிழ்</option>
+          <option value="te-IN">తెలుగు</option>
+          <option value="bn-IN">বাংলা</option>
+          <option value="mr-IN">मराठी</option>
+          <option value="gu-IN">ગુજરાતી</option>
+          <option value="kn-IN">ಕನ್ನಡ</option>
+          <option value="ml-IN">മലയാളം</option>
+          <option value="pa-IN">ਪੰਜਾਬੀ</option>
+          <option value="es-ES">Español</option>
+          <option value="de-DE">Deutsch</option>
+          <option value="fr-FR">Français</option>
+          <option value="ja-JP">日本語</option>
+        </select>
+
+        <button id="btnToggleMic" type="button" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <span id="micIcon" class="w-2.5 h-2.5 rounded-full bg-white"></span>
+          <span id="micBtnLabel">Start Voice Control</span>
+        </button>
+
+        <button id="btnToggleSpeech" type="button" class="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl font-medium text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition" title="Toggle spoken voice announcements">
+          <span id="ttsStatusIcon">🔊</span>
+          <span id="ttsStatusText">Voice Readback: ON</span>
+        </button>
+
+        <button id="btnToggleSound" type="button" class="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl font-medium text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition" title="Toggle board sound effects">
+          <span id="sfxStatusIcon">🔔</span>
+          <span id="sfxStatusText">Sound FX: ON</span>
+        </button>
+
+        <button id="btnOpenStepModal" type="button" class="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl font-medium text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition">
+          <span>📘</span>
+          <span>Build Guide & Help</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- SCREEN 1: Welcome & Mode Selection Screen -->
+  <section id="screenHome" class="flex-1 max-w-4xl w-full mx-auto px-4 py-8 sm:py-12 flex flex-col items-center justify-center">
+    <div class="text-center max-w-xl mb-8">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold mb-3">
+        <span>🎙️ Hands-Free Accessible Chess</span>
+      </div>
+      <h2 class="text-2xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+        How would you like to play?
+      </h2>
+      <p class="text-sm sm:text-base text-slate-600 mt-2">
+        Click an option below, or click <strong>Start Voice Control</strong> above and say <span class="font-semibold text-slate-800">"Play with Computer"</span> or <span class="font-semibold text-slate-800">"Play with Friend"</span>.
+      </p>
+    </div>
+
+    <div class="w-full grid grid-cols-1 md:grid-cols-2 gap-6">
+      <!-- Option 1: Play with Computer -->
+      <div class="bg-white border-2 border-slate-200 hover:border-blue-500 rounded-3xl p-6 shadow-sm transition flex flex-col justify-between">
+        <div>
+          <div class="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center text-3xl mb-4">
+            🤖
+          </div>
+          <h3 class="text-xl font-extrabold text-slate-900">Play with Computer</h3>
+          <p class="text-xs sm:text-sm text-slate-600 mt-1.5 leading-relaxed">
+            Practice hands-free using English, Hindi (<span class="font-semibold">"E2 से E4"</span>), or Hinglish voice commands against the built-in chess AI.
+          </p>
+        </div>
+
+        <div class="mt-6 pt-4 border-t border-slate-100">
+          <button id="btnChooseComputer" type="button" class="w-full py-3.5 px-5 rounded-2xl font-bold text-sm sm:text-base bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition">
+            Play with Computer →
+          </button>
+        </div>
+      </div>
+
+      <!-- Option 2: Play with Friend -->
+      <div class="bg-white border-2 border-slate-200 hover:border-emerald-500 rounded-3xl p-6 shadow-sm transition flex flex-col justify-between">
+        <div>
+          <div class="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center text-3xl mb-4">
+            🌐
+          </div>
+          <h3 class="text-xl font-extrabold text-slate-900">Play with Friend</h3>
+          <p class="text-xs sm:text-sm text-slate-600 mt-1.5 leading-relaxed">
+            Play together on 2 PCs connected on the same Wi-Fi/LAN using a 4-digit Room Code (or offline LAN server), or on the same PC.
+          </p>
+        </div>
+
+        <div class="mt-6 pt-4 border-t border-slate-100">
+          <button id="btnChooseFriend" type="button" class="w-full py-3.5 px-5 rounded-2xl font-bold text-sm sm:text-base bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition">
+            Play with Friend (LAN) →
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCREEN 2: Simple, Focused Game Container -->
+  <main id="screenGame" class="hidden flex-1 max-w-5xl w-full mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
+    <!-- Left Column: Chessboard + Status Bar (7 cols) -->
+    <section class="lg:col-span-7 flex flex-col items-center w-full" aria-label="Chessboard Area">
+
+      <!-- Big Simple Voice Status Banner -->
+      <div class="w-full bg-white border border-slate-200 rounded-2xl p-3 mb-3 shadow-xs flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <div id="voiceStateBadge" class="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center text-base shrink-0 font-bold">
+            🎙️
+          </div>
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span id="turnIndicatorBadge" class="inline-flex items-center text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                White's Turn (You)
+              </span>
+              <span id="checkAlertBadge" class="hidden text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-300">
+                Check!
+              </span>
+              <span id="lanRoleBadge" class="hidden text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                LAN: Not Connected
+              </span>
+            </div>
+            <p id="assistantAnnouncement" class="text-sm font-semibold text-slate-800 mt-0.5 truncate" aria-live="polite">
+              Say "E2 से E4", "E2 to E4", or "Knight to F3".
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button id="btnBoardMic" type="button" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition">
+            🎙️ Mic: OFF
+          </button>
+          <button id="btnSpeakHint" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition">
+            💡 Hint
+          </button>
+          <button id="btnReadBoard" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition">
+            🗣️ Read Status
+          </button>
+        </div>
+      </div>
+
+      <!-- Chessboard Card -->
+      <div id="boardWrapper" class="w-full max-w-[520px] bg-white border border-slate-200 rounded-2xl p-3 shadow-xs flex flex-col items-center">
+        <!-- Top Player Bar -->
+        <div class="w-full flex items-center justify-between pb-2 mb-1.5 border-b border-slate-100 text-xs">
+          <div class="flex items-center gap-2">
+            <span id="topPlayerDot" class="w-2.5 h-2.5 rounded-full bg-slate-800 border border-slate-400"></span>
+            <span id="topPlayerName" class="font-bold text-slate-800">Computer AI (Black)</span>
+            <span id="aiThinkingBadge" class="hidden text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">Thinking...</span>
+          </div>
+          <div id="capturedByTop" class="text-xs tracking-tight text-slate-500 min-h-[18px]"></div>
+        </div>
+
+        <!-- Square Canvas -->
+        <div id="canvasContainer" class="w-full aspect-square relative flex items-center justify-center">
+          <canvas id="chessCanvas" class="rounded-xl cursor-pointer block"></canvas>
+        </div>
+
+        <!-- Bottom Player Bar -->
+        <div class="w-full flex items-center justify-between pt-2 mt-1.5 border-t border-slate-100 text-xs">
+          <div class="flex items-center gap-2">
+            <span id="bottomPlayerDot" class="w-2.5 h-2.5 rounded-full bg-white border-2 border-slate-700"></span>
+            <span id="bottomPlayerName" class="font-bold text-slate-800">Player (White)</span>
+            <span id="selectedSquarePill" class="hidden text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">Selected: None</span>
+          </div>
+          <div id="capturedByBottom" class="text-xs tracking-tight text-slate-500 min-h-[18px]"></div>
+        </div>
+      </div>
+
+      <!-- Simple Action Bar Below Board -->
+      <div class="w-full max-w-[520px] mt-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 bg-white px-3.5 py-2 rounded-xl border border-slate-200">
+        <label class="inline-flex items-center gap-1.5 cursor-pointer select-none font-medium">
+          <input id="chkShowCoords" type="checkbox" checked class="rounded text-blue-600 focus:ring-blue-500" />
+          <span>Show A1–H8 on squares</span>
+        </label>
+        <div class="flex items-center gap-1.5">
+          <button id="btnFlipBoard" type="button" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition">
+            🔄 Flip Board
+          </button>
+          <button id="btnUndoMove" type="button" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition">
+            ↩️ Undo Turn
+          </button>
+          <button id="btnNewGame" type="button" class="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold transition">
+            ✨ New Game
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Simple Mode + LAN Connection + Voice Input (5 cols) -->
+    <aside class="lg:col-span-5 flex flex-col gap-3.5 w-full">
+
+      <!-- Card 1: Game Mode & 2-Player Same-LAN Setup -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label for="selectGameMode" class="block text-[11px] font-bold uppercase text-slate-400">Game Mode</label>
+            <select id="selectGameMode" class="w-full mt-1 text-xs sm:text-sm font-semibold bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="lan" selected>🌐 2-Player Same LAN (2 PCs)</option>
+              <option value="ai">🤖 vs. Computer AI</option>
+              <option value="pass">👥 2-Player Same PC (Voice)</option>
+            </select>
+          </div>
+
+          <div id="aiDiffWrapper">
+            <label for="selectDifficulty" class="block text-[11px] font-bold uppercase text-slate-400">AI Difficulty</label>
+            <select id="selectDifficulty" class="w-full mt-1 text-xs sm:text-sm font-semibold bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="1">Easy</option>
+              <option value="2" selected>Medium</option>
+              <option value="3">Hard</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 2-Player LAN Connection Panel (Shown when LAN Mode is active) -->
+        <div id="lanMultiplayerPanel" class="mt-3 pt-3 border-t border-slate-100">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold text-slate-700">🌐 Play Across 2 PCs on Same LAN</span>
+            <span id="lanStatusPill" class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+              Choose Host or Join
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2.5">
+            <!-- PC 1: Host -->
+            <button id="btnHostLan" type="button" class="px-3 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition text-center">
+              💻 PC 1: Host Room (White)
+            </button>
+
+            <!-- PC 2: Join -->
+            <div class="flex gap-1">
+              <input
+                id="lanRoomInput"
+                type="text"
+                maxlength="8"
+                placeholder="Room Code"
+                class="w-full px-2.5 py-1.5 text-xs font-bold uppercase tracking-wider rounded-xl border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button id="btnJoinLan" type="button" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition shrink-0">
+                Join (Black)
+              </button>
+            </div>
+          </div>
+
+          <!-- Active Room Code Display -->
+          <div id="lanRoomInfoBox" class="hidden p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-900 flex items-center justify-between">
+            <div>
+              <span class="font-medium">Room Code:</span>
+              <span id="lanActiveCode" class="font-extrabold text-sm tracking-widest ml-1 text-blue-700">----</span>
+            </div>
+            <span id="lanConnectionDetail" class="text-[11px] font-semibold text-blue-700">Waiting for PC 2...</span>
+          </div>
+
+          <p class="text-[11px] text-slate-500 mt-1.5 leading-snug">
+            On <strong>PC 1</strong> click <em>Host Room</em> to get a 4-digit code. On <strong>PC 2</strong> enter that code and click <em>Join</em>. (Or run <code class="bg-slate-100 px-1 rounded">python3 lan_server.py</code> on PC 1 for automatic offline Wi-Fi/LAN sync!)
+          </p>
+        </div>
+      </div>
+
+      <!-- Card 2: Simple Voice Command Console -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-600">
+            🎙️ Voice Recognition & Command Box
+          </h2>
+          <span id="micPermissionBadge" class="text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+            Ready
+          </span>
+        </div>
+
+        <!-- What the Mic Heard -->
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 mb-2.5">
+          <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Heard by Microphone / Input</div>
+          <div id="liveTranscriptText" class="text-sm font-bold text-blue-700 mt-0.5 min-h-[20px]">
+            "Waiting for voice command..."
+          </div>
+        </div>
+
+        <!-- Type or Speak Command Input -->
+        <form id="voiceSimForm" class="flex gap-1.5 mb-2.5">
+          <label for="voiceCommandInput" class="sr-only">Speak or type a voice command</label>
+          <input
+            id="voiceCommandInput"
+            type="text"
+            placeholder='Speak or type: "E2 से E4", "e2 se e4", "knight f3"'
+            class="flex-1 px-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            type="submit"
+            class="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-slate-900 hover:bg-slate-800 text-white transition shrink-0"
+          >
+            Run Command
+          </button>
+        </form>
+
+        <!-- Quick-Test Voice Chips -->
+        <div id="quickCommandChips" class="flex flex-wrap gap-1">
+          <button type="button" data-cmd="E2 से E4" class="cmd-chip px-2 py-1 rounded-lg text-xs font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition">"E2 से E4"</button>
+          <button type="button" data-cmd="e2 to e4" class="cmd-chip px-2 py-1 rounded-lg text-xs font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition">"E2 to E4"</button>
+          <button type="button" data-cmd="G1 से F3" class="cmd-chip px-2 py-1 rounded-lg text-xs font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition">"G1 से F3"</button>
+          <button type="button" data-cmd="knight to f3" class="cmd-chip px-2 py-1 rounded-lg text-xs font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition">"Knight to F3"</button>
+          <button type="button" data-cmd="d2 to d4" class="cmd-chip px-2 py-1 rounded-lg text-xs font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition">"D2 to D4"</button>
+          <button type="button" data-cmd="bishop to c4" class="cmd-chip px-2 py-1 rounded-lg text-xs font-medium bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition">"Bishop to C4"</button>
+          <button type="button" data-cmd="select g1" class="cmd-chip px-2 py-1 rounded-lg text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition">"Select G1"</button>
+          <button type="button" data-cmd="hint" class="cmd-chip px-2 py-1 rounded-lg text-xs font-medium bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition">"Hint"</button>
+          <button type="button" data-cmd="legal moves" class="cmd-chip px-2 py-1 rounded-lg text-xs font-medium bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition">"Legal moves"</button>
+          <button type="button" data-cmd="undo" class="cmd-chip px-2 py-1 rounded-lg text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition">"Undo"</button>
+        </div>
+      </div>
+
+      <!-- Card 3: Clean Collapsible Move Log & Voice Cheat Sheet -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-3.5 shadow-xs">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">Move Log & Voice Examples</h3>
+          <span id="moveCountLabel" class="text-xs text-slate-400">0 moves played</span>
+        </div>
+
+        <div id="moveHistoryContainer" class="custom-scroll max-h-28 overflow-y-auto bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs space-y-1 mb-2.5">
+          <div class="text-slate-400 italic text-center py-2">No moves yet — say "E2 से E4" or "E2 to E4"!</div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-1.5 text-[11px] text-slate-600">
+          <div class="p-2 rounded-lg bg-slate-50 border border-slate-200">
+            <strong class="text-slate-800">Hindi / Hinglish:</strong> "E2 से E4", "G1 se F3", "घोड़ा F3 पर"
+          </div>
+          <div class="p-2 rounded-lg bg-slate-50 border border-slate-200">
+            <strong class="text-slate-800">English:</strong> "E2 to E4", "Knight to F3", "Castle", "Undo"
+          </div>
+        </div>
+      </div>
+
+    </aside>
+  </main>
+
+  <!-- Step-by-Step Build & LAN Setup Modal -->
+  <div id="stepGuideModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-extrabold text-slate-900">How to Play on 2 PCs on Same LAN & Voice Guide</h2>
+          <p class="text-xs text-slate-500">Simple setup for 2-player LAN chess & hands-free voice control</p>
+        </div>
+        <button id="btnCloseStepModal" type="button" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold flex items-center justify-center">
+          ✕
+        </button>
+      </div>
+      <div class="p-6 overflow-y-auto space-y-3.5 text-sm text-slate-700 custom-scroll">
+        <div class="p-3.5 rounded-xl bg-blue-50 border border-blue-200">
+          <div class="font-bold text-blue-900">Way 1: Instant 4-Digit Room Code (Zero Setup)</div>
+          <p class="mt-1 text-blue-800 text-xs leading-relaxed">
+            1. Open this app on <strong>PC 1</strong> and click <strong>PC 1: Host Room (White)</strong>. You will get a 4-digit Room Code.<br/>
+            2. Open this app on <strong>PC 2</strong>, type that 4-digit Room Code, and click <strong>Join (Black)</strong>.<br/>
+            Both PCs connect peer-to-peer over your local network. White speaks moves on PC 1, and Black speaks moves on PC 2!
+          </p>
+        </div>
+        <div class="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
+          <div class="font-bold text-emerald-900">Way 2: 100% Offline LAN Server (`python3 lan_server.py`)</div>
+          <p class="mt-1 text-emerald-800 text-xs leading-relaxed">
+            If your LAN has no internet at all, extract <code class="bg-white px-1.5 py-0.5 rounded border">voice_chess_lan.zip</code> on PC 1 and run:<br/>
+            <code class="block mt-1.5 p-2 rounded bg-slate-900 text-emerald-300 font-mono text-xs">python3 lan_server.py</code>
+            Then open <code class="bg-white px-1 rounded">http://&lt;PC1-LAN-IP&gt;:8000</code> on both PCs — moves sync automatically across your LAN!
+          </p>
+        </div>
+        <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+          <div class="font-bold text-slate-900">Corrected Multi-Alternative Speech Recognition</div>
+          <p class="mt-1 text-slate-600 text-xs leading-relaxed">
+            The voice engine now checks up to 5 speech alternatives per utterance, splits merged numbers (like when "E2 to E4" is heard as "E22 E4" or "G12 F3"), corrects misheard letters ("I2 से I4" → "E2 to E4"), and pauses the mic while speaking aloud so it never hears its own voice.
+          </p>
+        </div>
+      </div>
+      <div class="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+        <button id="btnDoneStepModal" type="button" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold">
+          Back to Chessboard
+        </button>
+      </div>
+    </div>
   </div>
- </section>
- <section class="panel">
-  <h2>Move history</h2><ol id="history" aria-label="Move history"><li>No moves yet.</li></ol>
- </section>
-</aside>
-</main>
-<footer>VoiceChess is a local browser prototype. It does not connect to an online chess server or automatically share a game with a friend.</footer>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
-<script>
-(() => {
- const $ = id => document.getElementById(id);
- const SYMBOLS={w:{p:"♙",r:"♖",n:"♘",b:"♗",q:"♕",k:"♔"},b:{p:"♟",r:"♜",n:"♞",b:"♝",q:"♛",k:"♚"}};
- const NAMES={p:"pawn",r:"rook",n:"knight",b:"bishop",q:"queen",k:"king"};
- let game, selected=null, flipped=false, recognition=null, listening=false, foundSquare=null, lastMove=null;
- const boardEl=$("board");
- function initGame(){ if(typeof Chess!=="function"){ $("status").textContent="Chess rules library could not load. Check your internet connection and reload."; $("engineBadge").textContent="Library unavailable"; return; } game=new Chess(); selected=null; foundSquare=null;lastMove=null;render();updateUI();say("New game. White to move.");}
- function squareOrder(){const files=flipped?["h","g","f","e","d","c","b","a"]:["a","b","c","d","e","f","g","h"];const ranks=flipped?[1,2,3,4,5,6,7,8]:[8,7,6,5,4,3,2,1];return ranks.flatMap(r=>files.map(f=>f+r));}
- function render(){
-  if(!game)return; boardEl.innerHTML="";
-  const legal=selected?game.moves({square:selected,verbose:true}):[];
-  for(const sq of squareOrder()){
-   const p=game.get(sq), btn=document.createElement("button");btn.type="button";btn.className="sq "+(((Number(sq[1])+sq.charCodeAt(0)-97)%2===0)?"light":"dark");
-   btn.setAttribute("aria-label",sq+(p?`, ${p.color==="w"?"white":"black"} ${NAMES[p.type]}`:", empty")+(selected?`, selected source ${selected}`:""));
-   if(selected===sq)btn.classList.add("selected");
-   if(lastMove&&(lastMove.from===sq||lastMove.to===sq))btn.classList.add("last");
-   if(foundSquare===sq)btn.classList.add("king-found");
-   if(legal.some(m=>m.to===sq))btn.classList.add(p?"capture":"legal");
-   const coord=document.createElement("span");coord.className="coord";coord.textContent=sq;btn.appendChild(coord);
-   if(p){const piece=document.createElement("span");piece.className="piece "+(p.color==="w"?"white-piece":"black-piece");piece.textContent=SYMBOLS[p.color][p.type];piece.setAttribute("aria-hidden","true");btn.appendChild(piece);}
-   btn.addEventListener("click",()=>clickSquare(sq));boardEl.appendChild(btn);
-  }
-  $("ranks").innerHTML=(flipped?[1,2,3,4,5,6,7,8]:[8,7,6,5,4,3,2,1]).map(n=>`<span>${n}</span>`).join("");
-  $("files").innerHTML=(flipped?["h","g","f","e","d","c","b","a"]:["a","b","c","d","e","f","g","h"]).map(f=>`<span>${f}</span>`).join("");
- }
- function clickSquare(sq){
-  if(!game)return;
-  const p=game.get(sq);
-  if(!selected){if(!p){setStatus("That square is empty. Choose a piece first.");return;} if(p.color!==game.turn()){setStatus(`It is ${game.turn()==="w"?"White":"Black"}'s turn. Select that side's piece.`);return;}selected=sq;foundSquare=null;render();setStatus(`${sq}: ${p.color==="w"?"White":"Black"} ${NAMES[p.type]} selected. Choose a destination.`);return;}
-  if(selected===sq){selected=null;render();setStatus("Selection cleared.");return;}
-  const from=selected;selected=null;const result=makeMove(from,sq);if(!result&&p&&p.color===game.turn()){selected=sq;render();setStatus(`${sq} selected. Choose a legal destination.`);}
- }
- function makeMove(from,to,promotion="q"){
-  const result=game.move({from,to,promotion});if(!result){render();setStatus(`Illegal move ${from} to ${to}. Try another square or say “what can I move?”`);return false;}
-  lastMove={from:result.from,to:result.to};foundSquare=null;render();updateUI();
-  const message=`${result.color==="w"?"White":"Black"} ${NAMES[result.piece]} ${result.from} to ${result.to}${result.captured?" capturing "+NAMES[result.captured]:""}${result.promotion?" promoting to "+NAMES[result.promotion]:""}.`;
-  setStatus(message+" "+gameStatus());say(message+" "+gameStatus());return true;
- }
- function gameStatus(){if(game.in_checkmate())return "Checkmate.";if(game.in_draw())return "Draw.";if(game.in_check())return `${game.turn()==="w"?"White":"Black"} is in check.`;return `${game.turn()==="w"?"White":"Black"} to move.`;}
- function updateUI(){
-  $("turnLabel").textContent=game.game_over()?"Game over":`${game.turn()==="w"?"White":"Black"} to move`;
-  $("gameLabel").textContent=gameStatus();
-  const hist=game.history();if(!hist.length){$("history").innerHTML="<li>No moves yet.</li>";}else{let rows="";for(let i=0;i<hist.length;i+=2){rows+=`<li><strong>${Math.floor(i/2)+1}.</strong> ${hist[i]}${hist[i+1]?` &nbsp; ${hist[i+1]}`:""}</li>`;}$("history").innerHTML=rows;}
- }
- function setStatus(s){$("status").textContent=s;}
- function say(text){
-  if(!("speechSynthesis" in window))return;
-  window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.rate=0.95;u.pitch=1;u.lang="en-US";
-  if($("speechSynthCheck")&&!$("speechSynthCheck").checked)return;
-  window.speechSynthesis.speak(u);
- }
- function findKing(color){
-  const b=game.board();for(let r=0;r<8;r++)for(let c=0;c<8;c++){const p=b[r][c];if(p&&p.type==="k"&&p.color===color){const sq="abcdefgh"[c]+(8-r);foundSquare=sq;render();const msg=`Your ${color==="w"?"white":"black"} king is on ${sq}. The square is highlighted in gold.`;setStatus(msg);say(msg);return;}}
- }
- function describeBoard(){
-  const side=game.turn()==="w"?"White":"Black",pieces=[];
-  for(const sq of squareOrder()){const p=game.get(sq);if(p)pieces.push(`${p.color==="w"?"White":"Black"} ${NAMES[p.type]} on ${sq}`);}
-  const msg=`${side} to move. ${gameStatus()} There are ${pieces.length} pieces on the board. `+pieces.join(". ")+".";
-  setStatus(msg);say(msg);
- }
- function legalMoves(){
-  const moves=game.moves({verbose:true});if(!moves.length){const msg="There are no legal moves.";setStatus(msg);say(msg);return;}
-  const msg=`Legal moves for ${game.turn()==="w"?"White":"Black"}: `+moves.map(m=>`${NAMES[m.piece]} ${m.from} to ${m.to}`).join("; ")+".";
-  setStatus(msg);say(msg);
- }
- function normal(s){return s.toLowerCase().replace(/[.,!?;:]/g," ").replace(/\bplease\b/g," ").replace(/\s+/g," ").trim();}
- const FILE_WORDS={a:"a",alpha:"a",b:"b",bravo:"b",c:"c",charlie:"c",d:"d",delta:"d",e:"e",echo:"e",f:"f",foxtrot:"f",g:"g",golf:"g",h:"h",hotel:"h"};
- const NUM_WORDS={one:"1",two:"2",three:"3",four:"4",five:"5",six:"6",seven:"7",eight:"8"};
- function cleanSquareWords(s){return s.replace(/\b(alpha|bravo|charlie|delta|echo|foxtrot|golf|hotel)\s+(one|two|three|four|five|six|seven|eight)\b/g,(_,f,n)=>FILE_WORDS[f]+NUM_WORDS[n]).replace(/\b([a-h])\s+(one|two|three|four|five|six|seven|eight)\b/g,(_,f,n)=>f+NUM_WORDS[n]);}
- function handleCommand(raw){
-  const s=normal(cleanSquareWords(raw));if(!s)return;
-  $("heardText").textContent=`Heard: “${raw}”`;
-  if(/\b(help|commands|what can i say)\b/.test(s)){const msg="Say a move like e4, knight f3, or move e2 to e4. You can also say where is my king, describe the board, what can I move, undo, new game, read last move, or stop talking.";setStatus(msg);say(msg);return;}
-  if(/\b(stop talking|be quiet|silence|stop speech)\b/.test(s)){window.speechSynthesis?.cancel();setStatus("Speech stopped.");return;}
-  if(/\b(where is|locate|find)\b/.test(s)&&/\bking\b/.test(s)){let color=game.turn();if(/\b(black|opponent|their)\b/.test(s))color="b";else if(/\b(white|my|your)\b/.test(s))color="w";findKing(color);return;}
-  if(/\b(describe|read|tell me about|what is on)\b/.test(s)&&/\b(board|position|pieces)\b/.test(s)){describeBoard();return;}
-  if(/\b(what can i move|legal moves|available moves|possible moves)\b/.test(s)){legalMoves();return;}
-  if(/\b(undo|take back|retract)\b/.test(s)){const m=game.undo();if(m){lastMove=null;foundSquare=null;selected=null;render();updateUI();const msg=`Undid ${m.san}. ${game.turn()==="w"?"White":"Black"} to move.`;setStatus(msg);say(msg);}else setStatus("There is no move to undo.");return;}
-  if(/\b(new game|restart|reset board|start over)\b/.test(s)){game.reset();selected=null;lastMove=null;foundSquare=null;render();updateUI();setStatus("New game. White to move.");say("New game. White to move.");return;}
-  if(/\b(read last move|last move|what was the last move)\b/.test(s)){const h=game.history();const msg=h.length?`Last move was ${h[h.length-1]}.`:"No moves have been played yet.";setStatus(msg);say(msg);return;}
-  if(/\b(flip board|rotate board)\b/.test(s)){flipped=!flipped;render();setStatus(`Board flipped. ${game.turn()==="w"?"White":"Black"} to move.`);say("Board flipped.");return;}
-  if(/\b(start listening|listen)\b/.test(s)){startListening();return;}
-  if(/\b(stop listening|turn off microphone)\b/.test(s)){stopListening();return;}
-  // Direct coordinate moves: "e2 to e4", "move e2 e4", or "e2-e4".
-  const coords=s.match(/\b([a-h][1-8])\s*(?:to|two|into|[-,])\s*([a-h][1-8])\b/);
-  if(coords){makeMove(coords[1],coords[2]);return;}
-  // SAN or spoken piece + destination. Resolve only legal moves to avoid guessing.
-  const words=s.replace(/^(move|play|make|please move)\s+/,"").replace(/\s+(please|now)$/,"").trim();
-  const pieceMatch=words.match(/\b(king|queen|rook|bishop|knight|pawn)\s+(?:to\s+)?([a-h][1-8])\b/);
-  if(pieceMatch){
-   const pieceType={king:"k",queen:"q",rook:"r",bishop:"b",knight:"n",pawn:"p"}[pieceMatch[1]],to=pieceMatch[2];
-   const candidates=game.moves({verbose:true}).filter(m=>m.piece===pieceType&&m.to===to);
-   if(candidates.length===1){makeMove(candidates[0].from,to);return;}
-   if(candidates.length>1){const msg=`More than one ${pieceMatch[1]} can move to ${to}. Say the starting square, for example move g1 to f3.`;setStatus(msg);say(msg);return;}
-  }
-  // SAN-like moves, including e4, Nf3, exd5, O-O and O-O-O.
-  const sanCandidate=words.replace(/\b(castle kingside|castle king side)\b/g,"O-O").replace(/\b(castle queenside|castle queen side)\b/g,"O-O-O");
-  const possible=game.moves();const exact=possible.find(m=>m.toLowerCase()===sanCandidate.replace(/0/g,"o").toLowerCase());
-  if(exact){const result=game.move(exact);lastMove={from:result.from,to:result.to};foundSquare=null;render();updateUI();const msg=`${result.color==="w"?"White":"Black"} played ${result.san}. ${gameStatus()}`;setStatus(msg);say(msg);return;}
-  const msg=`I heard “${raw}”, but couldn't match it to a legal move.`;setStatus(msg);say(msg);
- }
- function startListening(){
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){setStatus("Speech recognition is not supported here. Use Chrome or Edge, or type a command in the command box.");say("Speech recognition is not supported in this browser.");return;}
-  if(listening)return;
-  try{
-   if(!recognition){recognition=new SR();recognition.lang="en-US";recognition.interimResults=false;recognition.continuous=false;recognition.maxAlternatives=3;
-    recognition.onresult=e=>{const transcript=e.results[e.results.length-1][0].transcript;handleCommand(transcript);};
-    recognition.onerror=e=>{setStatus(e.error==="not-allowed"?"Microphone permission was denied. Allow microphone access in the browser address bar.":`Speech recognition error: ${e.error}. Try again or type a command.`);};
-    recognition.onend=()=>{listening=false;setMicState(false);};
-   }
-   recognition.start();listening=true;setMicState(true);setStatus("Listening… say a chess move or ask a question.");$("micBtn").setAttribute("aria-pressed","true");
-  }catch(e){setStatus("Could not start listening. Wait a moment and try again.");listening=false;setMicState(false);}
- }
- function stopListening(){if(recognition&&listening)recognition.stop();listening=false;setMicState(false);setStatus("Microphone stopped.");}
- function setMicState(on){$("micState").textContent=on?"Listening…":"Microphone off";$("micBtn").textContent=on?"⏹ Stop listening":"🎙 Start listening";$("micBtn").classList.toggle("listening",on);$("micBtn").setAttribute("aria-pressed",String(on));}
- $("micBtn").addEventListener("click",()=>listening?stopListening():startListening());
- $("sendBtn").addEventListener("click",()=>{const v=$("commandInput").value;$("commandInput").value="";handleCommand(v);});
- $("commandInput").addEventListener("keydown",e=>{if(e.key==="Enter")$("sendBtn").click();});
- $("undoBtn").addEventListener("click",()=>handleCommand("undo"));
- $("resetBtn").addEventListener("click",()=>handleCommand("new game"));
- $("repeatBtn").addEventListener("click",()=>say($("status").textContent));
- $("flipBtn").addEventListener("click",()=>{flipped=!flipped;render();});
- document.addEventListener("keydown",e=>{if(e.code==="Space"&&!["INPUT","TEXTAREA"].includes(document.activeElement.tagName)){e.preventDefault();listening?stopListening():startListening();}if(e.key==="Escape"){selected=null;foundSquare=null;render();}});
- if("speechSynthesis" in window) $("engineBadge").textContent="Voice output available";
- initGame();
-})();
-</script>
-<script src='script.js'></script>
+
+  <script>
+    (function() {
+      "use strict";
+
+      // ==========================================
+      // 1. AUDIO SYNTHESIZER & SAFE SPEECH FEEDBACK
+      // ==========================================
+      let audioCtx = null;
+      let soundEnabled = true;
+      let speechEnabled = true;
+      let isSpeakingNow = false;
+
+      function ensureAudioCtx() {
+        if (!audioCtx) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) audioCtx = new AudioContextClass();
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+      }
+
+      function playTone(type) {
+        if (!soundEnabled) return;
+        try {
+          ensureAudioCtx();
+          if (!audioCtx) return;
+          const now = audioCtx.currentTime;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+
+          if (type === 'move') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(440, now);
+            osc.frequency.exponentialRampToValueAtTime(520, now + 0.08);
+            gain.gain.setValueAtTime(0.12, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+            osc.start(now);
+            osc.stop(now + 0.09);
+          } else if (type === 'capture') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(320, now);
+            osc.frequency.exponentialRampToValueAtTime(640, now + 0.12);
+            gain.gain.setValueAtTime(0.16, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+            osc.start(now);
+            osc.stop(now + 0.13);
+          } else if (type === 'check') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(587.33, now);
+            osc.frequency.setValueAtTime(880, now + 0.1);
+            gain.gain.setValueAtTime(0.15, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+            osc.start(now);
+            osc.stop(now + 0.28);
+          } else if (type === 'select') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(380, now);
+            gain.gain.setValueAtTime(0.08, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+            osc.start(now);
+            osc.stop(now + 0.06);
+          }
+        } catch (e) {}
+      }
+
+      function announce(text, speakAloud = true) {
+        const el = document.getElementById('assistantAnnouncement');
+        if (el) el.textContent = text;
+        if (speakAloud && speechEnabled && 'speechSynthesis' in window) {
+          try {
+            window.speechSynthesis.cancel();
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.rate = 1.04;
+            utter.pitch = 1.0;
+            utter.onstart = function() { isSpeakingNow = true; };
+            utter.onend = function() {
+              setTimeout(() => { isSpeakingNow = false; }, 180);
+            };
+            utter.onerror = function() { isSpeakingNow = false; };
+            window.speechSynthesis.speak(utter);
+          } catch (e) {
+            isSpeakingNow = false;
+          }
+        }
+      }
+
+      // ==========================================
+      // 2. COMPLETE CHESS ENGINE
+      // ==========================================
+      const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+      const PIECE_NAMES = {
+        p: 'Pawn', n: 'Knight', b: 'Bishop', r: 'Rook', q: 'Queen', k: 'King'
+      };
+      const PIECE_VALUES = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
+
+      const PAWN_PST = [
+        [0,  0,  0,  0,  0,  0,  0,  0],
+        [50, 50, 50, 50, 50, 50, 50, 50],
+        [10, 10, 20, 30, 30, 20, 10, 10],
+        [5,  5, 10, 25, 25, 10,  5,  5],
+        [0,  0,  0, 20, 20,  0,  0,  0],
+        [5, -5,-10,  0,  0,-10, -5,  5],
+        [5, 10, 10,-20,-20, 10, 10,  5],
+        [0,  0,  0,  0,  0,  0,  0,  0]
+      ];
+      const KNIGHT_PST = [
+        [-50,-40,-30,-30,-30,-30,-40,-50],
+        [-40,-20,  0,  0,  0,  0,-20,-40],
+        [-30,  0, 10, 15, 15, 10,  0,-30],
+        [-30,  5, 15, 20, 20, 15,  5,-30],
+        [-30,  0, 15, 20, 20, 15,  0,-30],
+        [-30,  5, 10, 15, 15, 10,  5,-30],
+        [-40,-20,  0,  5,  5,  0,-20,-40],
+        [-50,-40,-30,-30,-30,-30,-40,-50]
+      ];
+
+      let board = [];
+      let turn = 'w';
+      let castling = { wK: true, wQ: true, bK: true, bQ: true };
+      let epSquare = null;
+      let moveHistory = [];
+      let stateStack = [];
+      let selectedSq = null;
+      let hintMove = null;
+      let lastMove = null;
+      let boardFlipped = false;
+      let showSquareCoords = true;
+      let gameMode = 'lan'; // 'lan', 'ai', 'pass'
+      let aiDifficulty = 2;
+      let gameOver = false;
+      let aiThinking = false;
+
+      // LAN State
+      let lanRole = null; // 'w' (Host) or 'b' (Guest) or null (any on same LAN server)
+      let peerInstance = null;
+      let peerConn = null;
+      let lanRoomCode = '';
+      let broadcastChan = null;
+      let localServerAvailable = false;
+      let lastSyncedMoveCount = 0;
+
+      function sqToAlgebraic(r, c) {
+        return FILES[c] + (8 - r);
+      }
+
+      function algebraicToSq(str) {
+        if (!str || str.length !== 2) return null;
+        const c = FILES.indexOf(str[0].toLowerCase());
+        const rank = parseInt(str[1], 10);
+        if (c < 0 || isNaN(rank) || rank < 1 || rank > 8) return null;
+        return { r: 8 - rank, c };
+      }
+
+      function cloneBoard(b) {
+        return b.map(row => row.map(cell => (cell ? { ...cell } : null)));
+      }
+
+      function initGame(broadcastReset = false) {
+        const backRank = ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'];
+        board = Array.from({ length: 8 }, () => Array(8).fill(null));
+        for (let c = 0; c < 8; c++) {
+          board[0][c] = { type: backRank[c], color: 'b' };
+          board[1][c] = { type: 'p', color: 'b' };
+          board[6][c] = { type: 'p', color: 'w' };
+          board[7][c] = { type: backRank[c], color: 'w' };
+        }
+        turn = 'w';
+        castling = { wK: true, wQ: true, bK: true, bQ: true };
+        epSquare = null;
+        moveHistory = [];
+        stateStack = [];
+        selectedSq = null;
+        hintMove = null;
+        lastMove = null;
+        gameOver = false;
+        aiThinking = false;
+        lastSyncedMoveCount = 0;
+        updateUI();
+        drawBoard();
+        if (broadcastReset) {
+          sendLanMessage({ type: 'reset' });
+        }
+      }
+
+      function inBounds(r, c) {
+        return r >= 0 && r < 8 && c >= 0 && c < 8;
+      }
+
+      function findKing(b, color) {
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            const p = b[r][c];
+            if (p && p.color === color && p.type === 'k') return { r, c };
+          }
+        }
+        return null;
+      }
+
+      function isSquareAttacked(b, targetR, targetC, attackerColor) {
+        const pawnDir = attackerColor === 'w' ? 1 : -1;
+        for (const dc of [-1, 1]) {
+          const pr = targetR + pawnDir, pc = targetC + dc;
+          if (inBounds(pr, pc)) {
+            const p = b[pr][pc];
+            if (p && p.color === attackerColor && p.type === 'p') return true;
+          }
+        }
+        const knightJumps = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+        for (const [dr, dc] of knightJumps) {
+          const nr = targetR + dr, nc = targetC + dc;
+          if (inBounds(nr, nc)) {
+            const p = b[nr][nc];
+            if (p && p.color === attackerColor && p.type === 'n') return true;
+          }
+        }
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            if (dr === 0 && dc === 0) continue;
+            const kr = targetR + dr, kc = targetC + dc;
+            if (inBounds(kr, kc)) {
+              const p = b[kr][kc];
+              if (p && p.color === attackerColor && p.type === 'k') return true;
+            }
+          }
+        }
+        const ortho = [[-1,0],[1,0],[0,-1],[0,1]];
+        for (const [dr, dc] of ortho) {
+          let r = targetR + dr, c = targetC + dc;
+          while (inBounds(r, c)) {
+            const p = b[r][c];
+            if (p) {
+              if (p.color === attackerColor && (p.type === 'r' || p.type === 'q')) return true;
+              break;
+            }
+            r += dr; c += dc;
+          }
+        }
+        const diag = [[-1,-1],[-1,1],[1,-1],[1,1]];
+        for (const [dr, dc] of diag) {
+          let r = targetR + dr, c = targetC + dc;
+          while (inBounds(r, c)) {
+            const p = b[r][c];
+            if (p) {
+              if (p.color === attackerColor && (p.type === 'b' || p.type === 'q')) return true;
+              break;
+            }
+            r += dr; c += dc;
+          }
+        }
+        return false;
+      }
+
+      function inCheck(b, color) {
+        const k = findKing(b, color);
+        if (!k) return false;
+        return isSquareAttacked(b, k.r, k.c, color === 'w' ? 'b' : 'w');
+      }
+
+      function generatePseudoMoves(b, color, castleRights, ep) {
+        const moves = [];
+        const opp = color === 'w' ? 'b' : 'w';
+
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            const p = b[r][c];
+            if (!p || p.color !== color) continue;
+
+            if (p.type === 'p') {
+              const dir = color === 'w' ? -1 : 1;
+              const startRow = color === 'w' ? 6 : 1;
+              const promoRow = color === 'w' ? 0 : 7;
+              const r1 = r + dir;
+              if (inBounds(r1, c) && !b[r1][c]) {
+                if (r1 === promoRow) {
+                  for (const promo of ['q', 'r', 'b', 'n']) {
+                    moves.push({ from: { r, c }, to: { r: r1, c }, piece: 'p', promo });
+                  }
+                } else {
+                  moves.push({ from: { r, c }, to: { r: r1, c }, piece: 'p' });
+                  const r2 = r + dir * 2;
+                  if (r === startRow && !b[r2][c]) {
+                    moves.push({ from: { r, c }, to: { r: r2, c }, piece: 'p', doublePawn: true });
+                  }
+                }
+              }
+              for (const dc of [-1, 1]) {
+                const rc = r + dir, cc = c + dc;
+                if (!inBounds(rc, cc)) continue;
+                const target = b[rc][cc];
+                if (target && target.color === opp) {
+                  if (rc === promoRow) {
+                    for (const promo of ['q', 'r', 'b', 'n']) {
+                      moves.push({ from: { r, c }, to: { r: rc, c: cc }, piece: 'p', captured: target.type, promo });
+                    }
+                  } else {
+                    moves.push({ from: { r, c }, to: { r: rc, c: cc }, piece: 'p', captured: target.type });
+                  }
+                } else if (ep && ep.r === rc && ep.c === cc) {
+                  moves.push({ from: { r, c }, to: { r: rc, c: cc }, piece: 'p', captured: 'p', enPassant: true });
+                }
+              }
+            } else if (p.type === 'n') {
+              const jumps = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+              for (const [dr, dc] of jumps) {
+                const nr = r + dr, nc = c + dc;
+                if (!inBounds(nr, nc)) continue;
+                const t = b[nr][nc];
+                if (!t || t.color === opp) {
+                  moves.push({ from: { r, c }, to: { r: nr, c: nc }, piece: 'n', captured: t ? t.type : null });
+                }
+              }
+            } else if (p.type === 'b' || p.type === 'r' || p.type === 'q') {
+              const dirs = [];
+              if (p.type === 'b' || p.type === 'q') dirs.push([-1,-1],[-1,1],[1,-1],[1,1]);
+              if (p.type === 'r' || p.type === 'q') dirs.push([-1,0],[1,0],[0,-1],[0,1]);
+              for (const [dr, dc] of dirs) {
+                let nr = r + dr, nc = c + dc;
+                while (inBounds(nr, nc)) {
+                  const t = b[nr][nc];
+                  if (!t) {
+                    moves.push({ from: { r, c }, to: { r: nr, c: nc }, piece: p.type });
+                  } else {
+                    if (t.color === opp) {
+                      moves.push({ from: { r, c }, to: { r: nr, c: nc }, piece: p.type, captured: t.type });
+                    }
+                    break;
+                  }
+                  nr += dr; nc += dc;
+                }
+              }
+            } else if (p.type === 'k') {
+              for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                  if (dr === 0 && dc === 0) continue;
+                  const nr = r + dr, nc = c + dc;
+                  if (!inBounds(nr, nc)) continue;
+                  const t = b[nr][nc];
+                  if (!t || t.color === opp) {
+                    moves.push({ from: { r, c }, to: { r: nr, c: nc }, piece: 'k', captured: t ? t.type : null });
+                  }
+                }
+              }
+              const homeRow = color === 'w' ? 7 : 0;
+              if (r === homeRow && c === 4 && !isSquareAttacked(b, homeRow, 4, opp)) {
+                const canK = color === 'w' ? castleRights.wK : castleRights.bK;
+                const canQ = color === 'w' ? castleRights.wQ : castleRights.bQ;
+                if (canK && !b[homeRow][5] && !b[homeRow][6] &&
+                    b[homeRow][7] && b[homeRow][7].type === 'r' && b[homeRow][7].color === color &&
+                    !isSquareAttacked(b, homeRow, 5, opp) && !isSquareAttacked(b, homeRow, 6, opp)) {
+                  moves.push({ from: { r: homeRow, c: 4 }, to: { r: homeRow, c: 6 }, piece: 'k', castle: 'K' });
+                }
+                if (canQ && !b[homeRow][3] && !b[homeRow][2] && !b[homeRow][1] &&
+                    b[homeRow][0] && b[homeRow][0].type === 'r' && b[homeRow][0].color === color &&
+                    !isSquareAttacked(b, homeRow, 3, opp) && !isSquareAttacked(b, homeRow, 2, opp)) {
+                  moves.push({ from: { r: homeRow, c: 4 }, to: { r: homeRow, c: 2 }, piece: 'k', castle: 'Q' });
+                }
+              }
+            }
+          }
+        }
+        return moves;
+      }
+
+      function applyMoveToState(b, castleRights, move, color) {
+        const nextB = cloneBoard(b);
+        const nextCastle = { ...castleRights };
+        let nextEp = null;
+
+        const movingPiece = { ...nextB[move.from.r][move.from.c] };
+        nextB[move.from.r][move.from.c] = null;
+
+        if (move.enPassant) {
+          const capRow = color === 'w' ? move.to.r + 1 : move.to.r - 1;
+          nextB[capRow][move.to.c] = null;
+        }
+
+        if (move.castle === 'K') {
+          const row = move.from.r;
+          nextB[row][5] = nextB[row][7];
+          nextB[row][7] = null;
+        } else if (move.castle === 'Q') {
+          const row = move.from.r;
+          nextB[row][3] = nextB[row][0];
+          nextB[row][0] = null;
+        }
+
+        if (move.promo) movingPiece.type = move.promo;
+        nextB[move.to.r][move.to.c] = movingPiece;
+
+        if (move.doublePawn) {
+          nextEp = { r: (move.from.r + move.to.r) / 2, c: move.from.c };
+        }
+
+        if (movingPiece.type === 'k') {
+          if (color === 'w') { nextCastle.wK = false; nextCastle.wQ = false; }
+          else { nextCastle.bK = false; nextCastle.bQ = false; }
+        }
+        if (move.from.r === 7 && move.from.c === 0) nextCastle.wQ = false;
+        if (move.from.r === 7 && move.from.c === 7) nextCastle.wK = false;
+        if (move.from.r === 0 && move.from.c === 0) nextCastle.bQ = false;
+        if (move.from.r === 0 && move.from.c === 7) nextCastle.bK = false;
+        if (move.to.r === 7 && move.to.c === 0) nextCastle.wQ = false;
+        if (move.to.r === 7 && move.to.c === 7) nextCastle.wK = false;
+        if (move.to.r === 0 && move.to.c === 0) nextCastle.bQ = false;
+        if (move.to.r === 0 && move.to.c === 7) nextCastle.bK = false;
+
+        return { board: nextB, castling: nextCastle, epSquare: nextEp };
+      }
+
+      function getLegalMoves(b = board, color = turn, castleRights = castling, ep = epSquare) {
+        const pseudo = generatePseudoMoves(b, color, castleRights, ep);
+        const legal = [];
+        for (const m of pseudo) {
+          const res = applyMoveToState(b, castleRights, m, color);
+          if (!inCheck(res.board, color)) {
+            legal.push({
+              ...m,
+              fromAlg: sqToAlgebraic(m.from.r, m.from.c),
+              toAlg: sqToAlgebraic(m.to.r, m.to.c)
+            });
+          }
+        }
+        return legal;
+      }
+
+      function formatMoveSpoken(move) {
+        if (move.castle === 'K') return 'Castled Kingside';
+        if (move.castle === 'Q') return 'Castled Queenside';
+        const pName = PIECE_NAMES[move.piece] || 'Piece';
+        const fromStr = move.fromAlg.toUpperCase();
+        const toStr = move.toAlg.toUpperCase();
+        let phrase = `${pName} ${fromStr} to ${toStr}`;
+        if (move.captured) {
+          phrase = `${pName} on ${fromStr} captures ${PIECE_NAMES[move.captured]} on ${toStr}`;
+        }
+        if (move.promo) {
+          phrase += `, promoted to ${PIECE_NAMES[move.promo]}`;
+        }
+        return phrase;
+      }
+
+      function formatMoveAlgebraic(move) {
+        if (move.castle === 'K') return 'O-O';
+        if (move.castle === 'Q') return 'O-O-O';
+        const pLetter = move.piece === 'p' ? (move.captured ? move.fromAlg[0] : '') : move.piece.toUpperCase();
+        const cap = move.captured ? 'x' : '';
+        const promo = move.promo ? '=' + move.promo.toUpperCase() : '';
+        return `${pLetter}${cap}${move.toAlg}${promo}`;
+      }
+
+      function canLocalPlayerMove() {
+        if (gameMode === 'lan' && lanRole) {
+          return turn === lanRole;
+        }
+        if (gameMode === 'ai') {
+          return turn === 'w' && !aiThinking;
+        }
+        return true;
+      }
+
+      function executeMove(move, isRemoteOrAI = false) {
+        stateStack.push({
+          board: cloneBoard(board),
+          turn,
+          castling: { ...castling },
+          epSquare: epSquare ? { ...epSquare } : null,
+          lastMove: lastMove ? { ...lastMove } : null,
+          moveHistory: [...moveHistory],
+          gameOver
+        });
+
+        const nextState = applyMoveToState(board, castling, move, turn);
+        board = nextState.board;
+        castling = nextState.castling;
+        epSquare = nextState.epSquare;
+        const moverColor = turn;
+        turn = turn === 'w' ? 'b' : 'w';
+        selectedSq = null;
+        hintMove = null;
+        lastMove = { from: move.from, to: move.to };
+
+        const oppInCheck = inCheck(board, turn);
+        const oppLegal = getLegalMoves(board, turn, castling, epSquare);
+
+        let notation = formatMoveAlgebraic(move);
+        if (oppLegal.length === 0 && oppInCheck) notation += '#';
+        else if (oppInCheck) notation += '+';
+
+        const spokenDesc = formatMoveSpoken(move);
+        moveHistory.push({
+          color: moverColor,
+          notation,
+          spoken: spokenDesc,
+          fromAlg: move.fromAlg,
+          toAlg: move.toAlg,
+          promo: move.promo || null
+        });
+        lastSyncedMoveCount = moveHistory.length;
+
+        if (oppInCheck) playTone('check');
+        else if (move.captured) playTone('capture');
+        else playTone('move');
+
+        // Broadcast move to LAN opponent if made locally
+        if (!isRemoteOrAI && gameMode === 'lan') {
+          sendLanMessage({
+            type: 'move',
+            fromAlg: move.fromAlg,
+            toAlg: move.toAlg,
+            promo: move.promo || 'q',
+            moveCount: moveHistory.length
+          });
+        }
+
+        updateUI();
+        drawBoard();
+
+        if (oppLegal.length === 0) {
+          gameOver = true;
+          if (oppInCheck) {
+            const winner = moverColor === 'w' ? 'White' : 'Black';
+            announce(`Checkmate! ${spokenDesc}. ${winner} wins!`);
+          } else {
+            announce(`Stalemate! ${spokenDesc}. Draw game.`);
+          }
+          updateUI();
+          return;
+        }
+
+        const checkSuffix = oppInCheck ? ' Check!' : '';
+
+        if (gameMode === 'ai' && turn === 'b' && !isRemoteOrAI) {
+          announce(`You played ${spokenDesc}.${checkSuffix} Computer thinking...`, true);
+          aiThinking = true;
+          updateUI();
+          setTimeout(makeAIMove, 500);
+        } else if (gameMode === 'ai' && isRemoteOrAI) {
+          aiThinking = false;
+          announce(`Computer played ${spokenDesc}.${checkSuffix} Your turn.`, true);
+          updateUI();
+        } else if (gameMode === 'lan') {
+          if (isRemoteOrAI) {
+            announce(`Opponent played ${spokenDesc}.${checkSuffix} Your turn!`, true);
+          } else {
+            announce(`You played ${spokenDesc}.${checkSuffix} Waiting for LAN opponent...`, true);
+          }
+        } else {
+          const nextPlayer = turn === 'w' ? 'White' : 'Black';
+          announce(`${spokenDesc}.${checkSuffix} ${nextPlayer}'s turn.`, true);
+        }
+      }
+
+      // ==========================================
+      // 3. 2-PLAYER SAME-LAN MULTIPLAYER ENGINE
+      // ==========================================
+      function setLanStatus(text, styleType) {
+        const pill = document.getElementById('lanStatusPill');
+        const detail = document.getElementById('lanConnectionDetail');
+        if (detail) detail.textContent = text;
+        if (!pill) return;
+        pill.textContent = text;
+        if (styleType === 'connected') {
+          pill.className = 'text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200';
+        } else if (styleType === 'waiting') {
+          pill.className = 'text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200';
+        } else {
+          pill.className = 'text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200';
+        }
+      }
+
+      function setupBroadcastAndLocalLan() {
+        // 1. BroadcastChannel for instant multi-window/same-PC testing
+        if ('BroadcastChannel' in window) {
+          try {
+            broadcastChan = new BroadcastChannel('voicechess_lan_sync');
+            broadcastChan.onmessage = function(ev) {
+              if (ev.data) handleIncomingLanData(ev.data);
+            };
+          } catch (e) {}
+        }
+
+        // 2. Check if hosted via the included Python LAN Server (/api/state)
+        // Guarded so Canvas preview never triggers local network requests
+        if (window.location.protocol.startsWith('http') && window.location.port === '8000') {
+          setInterval(pollLocalLanServer, 800);
+        }
+      }
+
+      function pollLocalLanServer() {
+        if (gameMode !== 'lan') return;
+        fetch(window.location.origin + '/api/state')
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (!data) return;
+            if (!localServerAvailable) {
+              localServerAvailable = true;
+              setLanStatus('LAN Server Auto-Connected', 'connected');
+            }
+            if (data.resetId && data.moveCount === 0 && moveHistory.length > 0) {
+              initGame(false);
+              return;
+            }
+            if (data.lastMove && data.moveCount === moveHistory.length + 1) {
+              applyRemoteMove(data.lastMove.fromAlg, data.lastMove.toAlg, data.lastMove.promo || 'q');
+            }
+          })
+          .catch(() => {});
+      }
+
+      function sendLanMessage(msg) {
+        // 1. PeerJS WebRTC DataChannel (PC 1 <-> PC 2)
+        if (peerConn && peerConn.open) {
+          try { peerConn.send(msg); } catch (e) {}
+        }
+        // 2. Same-PC BroadcastChannel
+        if (broadcastChan) {
+          try { broadcastChan.postMessage({ ...msg, room: lanRoomCode }); } catch (e) {}
+        }
+        // 3. Optional local Python LAN server
+        if (localServerAvailable) {
+          fetch(window.location.origin + '/api/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(msg)
+          }).catch(() => {});
+        }
+      }
+
+      function applyRemoteMove(fromAlg, toAlg, promoChoice = 'q') {
+        const legal = getLegalMoves();
+        const match = legal.find(
+          m => m.fromAlg === fromAlg && m.toAlg === toAlg && (!m.promo || m.promo === promoChoice)
+        );
+        if (match) {
+          executeMove(match, true);
+        }
+      }
+
+      function handleIncomingLanData(data) {
+        if (!data || typeof data !== 'object') return;
+        if (data.room && lanRoomCode && data.room !== lanRoomCode) return;
+
+        if (data.type === 'hello') {
+          setLanStatus('Connected to PC 2 (Black)', 'connected');
+          announce('Second PC connected! You are White. Speak your first move, such as E2 से E4.');
+        } else if (data.type === 'move') {
+          applyRemoteMove(data.fromAlg, data.toAlg, data.promo || 'q');
+        } else if (data.type === 'undo') {
+          handleUndo(true);
+        } else if (data.type === 'reset') {
+          initGame(false);
+          announce('Opponent started a new game.');
+        }
+      }
+
+      function hostLanRoom() {
+        ensureAudioCtx();
+        gameMode = 'lan';
+        lanRole = 'w';
+        boardFlipped = false;
+        const code = String(Math.floor(1000 + Math.random() * 9000));
+        lanRoomCode = code;
+
+        const infoBox = document.getElementById('lanRoomInfoBox');
+        const codeEl = document.getElementById('lanActiveCode');
+        const roleBadge = document.getElementById('lanRoleBadge');
+        if (infoBox) infoBox.classList.remove('hidden');
+        if (codeEl) codeEl.textContent = code;
+        if (roleBadge) {
+          roleBadge.classList.remove('hidden');
+          roleBadge.textContent = `You: White (Room ${code})`;
+        }
+
+        initGame(false);
+        setLanStatus(`Room ${code} — Waiting for PC 2`, 'waiting');
+        announce(`Created LAN Room ${code.split('').join(' ')}. Enter code ${code} on the second PC to join as Black.`);
+
+        if (typeof Peer !== 'undefined') {
+          try {
+            if (peerInstance) peerInstance.destroy();
+            peerInstance = new Peer(`voicechess-lan-${code}`);
+            peerInstance.on('connection', function(conn) {
+              peerConn = conn;
+              conn.on('open', function() {
+                setLanStatus(`Connected (Room ${code})`, 'connected');
+              });
+              conn.on('data', handleIncomingLanData);
+            });
+          } catch (e) {}
+        }
+      }
+
+      function joinLanRoom() {
+        ensureAudioCtx();
+        const input = document.getElementById('lanRoomInput');
+        const code = (input ? input.value : '').trim();
+        if (!code) {
+          announce('Please enter the 4-digit Room Code from PC 1 first.');
+          if (input) input.focus();
+          return;
+        }
+
+        gameMode = 'lan';
+        lanRole = 'b';
+        boardFlipped = true; // Black sees Black pieces at the bottom!
+        lanRoomCode = code;
+
+        const infoBox = document.getElementById('lanRoomInfoBox');
+        const codeEl = document.getElementById('lanActiveCode');
+        const roleBadge = document.getElementById('lanRoleBadge');
+        if (infoBox) infoBox.classList.remove('hidden');
+        if (codeEl) codeEl.textContent = code;
+        if (roleBadge) {
+          roleBadge.classList.remove('hidden');
+          roleBadge.textContent = `You: Black (Room ${code})`;
+        }
+
+        initGame(false);
+        setLanStatus(`Connecting to Room ${code}...`, 'waiting');
+
+        // Notify via BroadcastChannel if on same PC
+        if (broadcastChan) {
+          broadcastChan.postMessage({ type: 'hello', room: code });
+          setLanStatus(`Connected as Black (Room ${code})`, 'connected');
+        }
+
+        if (typeof Peer !== 'undefined') {
+          try {
+            if (peerInstance) peerInstance.destroy();
+            peerInstance = new Peer();
+            peerInstance.on('open', function() {
+              const conn = peerInstance.connect(`voicechess-lan-${code}`);
+              peerConn = conn;
+              conn.on('open', function() {
+                setLanStatus(`Connected as Black (Room ${code})`, 'connected');
+                conn.send({ type: 'hello', room: code });
+                announce(`Connected to Room ${code} as Black! Board flipped to Black's view. Waiting for White's move.`);
+              });
+              conn.on('data', handleIncomingLanData);
+            });
+          } catch (e) {}
+        } else {
+          announce(`Joined Room ${code} as Black. Waiting for White's move.`);
+        }
+      }
+
+      // ==========================================
+      // 4. MINIMAX AI
+      // ==========================================
+      function evaluateBoard(b) {
+        let score = 0;
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            const p = b[r][c];
+            if (!p) continue;
+            let val = PIECE_VALUES[p.type] || 0;
+            const tableRow = p.color === 'w' ? r : 7 - r;
+            if (p.type === 'p') val += PAWN_PST[tableRow][c];
+            else if (p.type === 'n') val += KNIGHT_PST[tableRow][c];
+            else if (p.type === 'b' || p.type === 'q') {
+              if (r >= 2 && r <= 5 && c >= 2 && c <= 5) val += 15;
+            }
+            score += p.color === 'w' ? val : -val;
+          }
+        }
+        return score;
+      }
+
+      function chooseBestMove(b, color, castleRights, ep, depth) {
+        const legal = getLegalMoves(b, color, castleRights, ep);
+        if (legal.length === 0) return null;
+        legal.sort((a, bMove) => (bMove.captured ? 10 : 0) - (a.captured ? 10 : 0));
+
+        if (depth === 1) {
+          let best = legal[0];
+          let bestScore = color === 'w' ? -Infinity : Infinity;
+          for (const m of legal) {
+            if (m.promo && m.promo !== 'q') continue;
+            const next = applyMoveToState(b, castleRights, m, color);
+            const sc = evaluateBoard(next.board) + (Math.random() - 0.5) * 70;
+            if ((color === 'w' && sc > bestScore) || (color === 'b' && sc < bestScore)) {
+              bestScore = sc;
+              best = m;
+            }
+          }
+          return best;
+        }
+
+        function minimax(currB, currColor, currCastle, currEp, d, alpha, beta) {
+          if (d === 0) return evaluateBoard(currB);
+          const moves = getLegalMoves(currB, currColor, currCastle, currEp);
+          if (moves.length === 0) {
+            if (inCheck(currB, currColor)) {
+              return currColor === 'w' ? -19000 - d * 100 : 19000 + d * 100;
+            }
+            return 0;
+          }
+          moves.sort((a, bMove) => (bMove.captured ? 10 : 0) - (a.captured ? 10 : 0));
+          if (currColor === 'w') {
+            let maxEval = -Infinity;
+            for (const m of moves) {
+              if (m.promo && m.promo !== 'q') continue;
+              const next = applyMoveToState(currB, currCastle, m, 'w');
+              const ev = minimax(next.board, 'b', next.castling, next.epSquare, d - 1, alpha, beta);
+              if (ev > maxEval) maxEval = ev;
+              if (ev > alpha) alpha = ev;
+              if (beta <= alpha) break;
+            }
+            return maxEval;
+          } else {
+            let minEval = Infinity;
+            for (const m of moves) {
+              if (m.promo && m.promo !== 'q') continue;
+              const next = applyMoveToState(currB, currCastle, m, 'b');
+              const ev = minimax(next.board, 'w', next.castling, next.epSquare, d - 1, alpha, beta);
+              if (ev < minEval) minEval = ev;
+              if (ev < beta) beta = ev;
+              if (beta <= alpha) break;
+            }
+            return minEval;
+          }
+        }
+
+        let bestMove = legal[0];
+        let bestVal = color === 'w' ? -Infinity : Infinity;
+        const searchDepth = depth === 2 ? 2 : 3;
+        for (const m of legal) {
+          if (m.promo && m.promo !== 'q') continue;
+          const next = applyMoveToState(b, castleRights, m, color);
+          const val = minimax(next.board, color === 'w' ? 'b' : 'w', next.castling, next.epSquare, searchDepth - 1, -Infinity, Infinity);
+          if ((color === 'w' && val > bestVal) || (color === 'b' && val < bestVal)) {
+            bestVal = val;
+            bestMove = m;
+          }
+        }
+        return bestMove;
+      }
+
+      function makeAIMove() {
+        if (gameOver || turn !== 'b') {
+          aiThinking = false;
+          updateUI();
+          return;
+        }
+        const chosen = chooseBestMove(board, 'b', castling, epSquare, aiDifficulty);
+        aiThinking = false;
+        if (chosen) executeMove(chosen, true);
+      }
+
+      // ==========================================
+      // 5. CORRECTED & ROBUST VOICE COMMAND PARSER
+      // ==========================================
+      const DEVANAGARI_REWRITES = [
+        // Whole-word Hindi/Devanagari homophones for chess squares
+        [/यूट्यूब|यू\s*ट्यूब/g, ' e2 '],
+        [/जीवन|जी\s*वन/g, ' g1 '],
+        [/दीवान|दिवाण/g, ' d1 '],
+        [/डिफ़ॉल्ट|डिफॉल्ट/g, ' d4 '],
+        [/बिफोर/g, ' b4 '],
+        // Hindi Devanagari digits
+        [/१/g, '1'], [/२/g, '2'], [/३/g, '3'], [/४/g, '4'],
+        [/५/g, '5'], [/६/g, '6'], [/७/g, '7'], [/८/g, '8'],
+        // English numbers written in Devanagari script (CRITICAL for "ई टू से ई फोर")
+        [/वन/g, ' 1 '],
+        [/टू|टु|तू/g, ' 2 '],
+        [/थ्री|थ्रि|श्री/g, ' 3 '],
+        [/फोर|फ़ोर|फॉर|फ़ॉर/g, ' 4 '],
+        [/फाइव|फ़ाइव/g, ' 5 '],
+        [/सिक्स/g, ' 6 '],
+        [/सेवन/g, ' 7 '],
+        [/एट|ऐट|एठ/g, ' 8 '],
+        // Hindi number words
+        [/एक/g, ' 1 '], [/दो/g, ' 2 '], [/तीन/g, ' 3 '], [/चार/g, ' 4 '],
+        [/पाँच|पांच/g, ' 5 '], [/छह|छः|छे/g, ' 6 '], [/सात/g, ' 7 '], [/आठ/g, ' 8 '],
+        // Hindi multi-word commands
+        [/नया\s+खेल|नया\s+गेम|फिर\s+से/g, ' new game '],
+        [/बोर्ड\s+पलटो|बोर्ड\s+घुमाओ|पलटो/g, ' flip board '],
+        [/वापस\s+लो|वापस|पीछे/g, ' undo '],
+        [/सुझाव|मदद|हिंट/g, ' hint '],
+        [/कानूनी\s+चालें|चालें\s+बताओ/g, ' legal moves '],
+        [/चुनो|चुनें|सेलेक्ट/g, ' select '],
+        [/मारो|काटो|कब्जा/g, ' takes '],
+        [/कंप्यूटर|कम्प्यूटर/g, ' computer '],
+        [/दोस्त|फ्रेंड/g, ' friend '],
+        // Hindi & Devanagari-transliterated English chess piece names
+        [/घोड़ा|अश्व|नाइट|नाईट/g, ' knight '],
+        [/ऊँट|ऊंट|बिशप/g, ' bishop '],
+        [/हाथी|तोप|रूक|रुक/g, ' rook '],
+        [/वज़ीर|वजीर|रानी|क्वीन/g, ' queen '],
+        [/राजा|बादशाह|किंग/g, ' king '],
+        [/प्यादा|सैनिक|पॉन|पोन/g, ' pawn '],
+        [/कासल|कैसल/g, ' castle '],
+        // Hindi connectors ("से", "तक", "पर", "को", "पे") -> "to"
+        [/से|सें|तक|पर|पे|को/g, ' to '],
+        // Devanagari spoken file letters A-H
+        [/एफ़|एफ|फ|फ़/g, 'f'],
+        [/एच|अच/g, 'h'],
+        [/बी|बि|ब/g, 'b'],
+        [/सी|सि|स/g, 'c'],
+        [/डी|डि|ड|द/g, 'd'],
+        [/जी|जि|ज/g, 'g'],
+        [/ई|इ/g, 'e'],
+        [/ए|अ/g, 'a']
+      ];
+
+      const SPOKEN_REWRITES = [
+        // Common whole-word homophones heard by Chrome SpeechRecognition
+        [/\byoutube\b/g, 'e2'], [/\byou\s+tube\b/g, 'e2'],
+        [/\binto\b/g, 'e2'], [/\bin\s+to\b/g, 'e2'],
+        [/\bitu\b/g, 'e2'], [/\betu\b/g, 'e2'], [/\bito\b/g, 'e2'],
+        [/\beat\s+to\b/g, 'e2'], [/\beat\s+two\b/g, 'e2'],
+        [/\bhe\s+to\b/g, 'e2'], [/\bhe\s+two\b/g, 'e2'],
+        [/\bhe\s+for\b/g, 'e4'], [/\bhe\s+four\b/g, 'e4'],
+        [/\bif\s+or\b/g, 'e4'], [/\bif\s+for\b/g, 'e4'], [/\bif\s+four\b/g, 'e4'],
+        [/\bifor\b/g, 'e4'], [/\befor\b/g, 'e4'],
+        [/\bbeef\s+or\b/g, 'b4'], [/\bbefore\b/g, 'b4'],
+        [/\bdefault\b/g, 'd4'], [/\bdetox\b/g, 'd2'], [/\bdue\s+to\b/g, 'd2'],
+        [/\bjeevan\b/g, 'g1'], [/\bjivan\b/g, 'g1'], [/\bgiven\b/g, 'g1'],
+        [/\bdeewan\b/g, 'd1'], [/\bdiwan\b/g, 'd1'],
+        [/\beven\b/g, 'e1'],
+        // NATO phonetic alphabet
+        [/\balpha\b/g, 'a'], [/\bbravo\b/g, 'b'], [/\bcharlie\b/g, 'c'],
+        [/\bdelta\b/g, 'd'], [/\becho\b/g, 'e'], [/\bfoxtrot\b/g, 'f'],
+        [/\bgolf\b/g, 'g'], [/\bhotel\b/g, 'h'],
+        // Hindi / Hinglish connectors
+        [/\bse\b/g, 'to'], [/\bsay\b/g, 'to'], [/\btak\b/g, 'to'],
+        [/\bpar\b/g, 'to'], [/\bpe\b/g, 'to'], [/\bko\b/g, 'to'],
+        // Hindi / Hinglish pieces & commands
+        [/\bghoda\b/g, 'knight'], [/\bghora\b/g, 'knight'],
+        [/\boont\b/g, 'bishop'], [/\bunt\b/g, 'bishop'],
+        [/\bhathi\b/g, 'rook'], [/\bhaathi\b/g, 'rook'],
+        [/\bwazir\b/g, 'queen'], [/\bvazir\b/g, 'queen'], [/\brani\b/g, 'queen'],
+        [/\braja\b/g, 'king'], [/\bbadshah\b/g, 'king'],
+        [/\bpyada\b/g, 'pawn'], [/\bpyaada\b/g, 'pawn'],
+        [/\bnaya\s+game\b/g, 'new game'], [/\bnaya\s+khel\b/g, 'new game'],
+        [/\bwapas\b/g, 'undo'], [/\bpeeche\b/g, 'undo'],
+        [/\bsujhav\b/g, 'hint'], [/\bmadad\b/g, 'hint'],
+        [/\bchuno\b/g, 'select'], [/\bmaro\b/g, 'takes'], [/\bkaato\b/g, 'takes'],
+        // Hindi / Hinglish numbers
+        [/\bek\b/g, '1'], [/\bdo\b/g, '2'], [/\bteen\b/g, '3'],
+        [/\bchaar\b/g, '4'], [/\bchar\b/g, '4'],
+        [/\bpaanch\b/g, '5'], [/\bpanch\b/g, '5'],
+        [/\bchhah\b/g, '6'], [/\bchhe\b/g, '6'], [/\bche\b/g, '6'],
+        [/\bsaat\b/g, '7'], [/\bsat\b/g, '7'],
+        [/\baath\b/g, '8'], [/\bath\b/g, '8'],
+        // English numbers & homophones
+        [/\bwon\b/g, '1'], [/\bone\b/g, '1'],
+        [/\btwo\b/g, '2'], [/\btoo\b/g, '2'], [/\btu\b/g, '2'],
+        [/\bthree\b/g, '3'], [/\bfree\b/g, '3'], [/\bsri\b/g, '3'], [/\bshri\b/g, '3'],
+        [/\bfour\b/g, '4'], [/\bfor\b/g, '4'],
+        [/\bfive\b/g, '5'], [/\bsix\b/g, '6'], [/\bseven\b/g, '7'],
+        [/\beight\b/g, '8'], [/\bate\b/g, '8'],
+        // Phonetic letter + rank combinations
+        [/\b(?:see|sea|si|she)\s*([1-8])\b/g, 'c$1'],
+        [/\b(?:he|hi|eat|it|in|if|ee|ii)\s*([1-8])\b/g, 'e$1'],
+        [/\b(?:ay|hey|eh)\s*([1-8])\b/g, 'a$1'],
+        [/\b(?:be|bee|we)\s*([1-8])\b/g, 'b$1'],
+        [/\b(?:dee|the|di|day|tea|tee)\s*([1-8])\b/g, 'd$1'],
+        [/\b(?:ef|of|app)\s*([1-8])\b/g, 'f$1'],
+        [/\b(?:gee|ji|je)\s*([1-8])\b/g, 'g$1'],
+        [/\b(?:ach|etch|age|each)\s*([1-8])\b/g, 'h$1'],
+        [/\bnight\b/g, 'knight'], [/\bhorse\b/g, 'knight'],
+        [/\bpon\b/g, 'pawn'], [/\bpond\b/g, 'pawn'], [/\bupon\b/g, 'pawn'],
+        [/\bbrook\b/g, 'rook'], [/\broc\b/g, 'rook'],
+        [/\bcastle\s+short\b/g, 'castle kingside'],
+        [/\bcastle\s+long\b/g, 'castle queenside']
+      ];
+
+      function normalizeTranscript(raw) {
+        let s = (raw || '').toLowerCase().trim();
+        for (const [regex, rep] of DEVANAGARI_REWRITES) {
+          s = s.replace(regex, rep);
+        }
+        s = s.replace(/[^a-z0-9\s]/g, ' ');
+        for (const [regex, rep] of SPOKEN_REWRITES) {
+          s = s.replace(regex, rep);
+        }
+
+        // Map non-chess file letters heard before a rank 1-8
+        // (e.g. "i2" -> "e2", "y2" -> "e2", "t2" -> "d2", "j1" -> "g1", "s3" -> "f3", "p2" -> "b2", "v2" -> "b2")
+        s = s.replace(/\b[iy]\s*([1-8])\b/g, 'e$1');
+        s = s.replace(/\bj\s*([1-8])\b/g, 'g$1');
+        s = s.replace(/\b[pv]\s*([1-8])\b/g, 'b$1');
+        s = s.replace(/\bt\s*([1-8])\b/g, 'd$1');
+        s = s.replace(/\bs\s*([1-8])\b/g, 'f$1');
+        s = s.replace(/\bk\s*([1-8])\b/g, 'c$1');
+
+        // Also handle "82 to 84" when STT hears "E2" as "82" and "E4" as "84"
+        s = s.replace(/\b8([1-8])\b/g, 'e$1');
+
+        // CRITICAL FIX: Split merged "<rank>2" where "to" was transcribed as "2"
+        // e.g., "e22 e4" or "e 22 e 4" or "e22e4" or "g12 f3" -> "e2 to e4", "g1 to f3"
+        s = s.replace(/\b([a-h])\s*([1-8])2\s*([a-h])\s*([1-8])\b/g, '$1$2 to $3$4');
+
+        // Split same-file shorthand like "e24" or "e 24" -> "e2 to e4"
+        s = s.replace(/\b([a-h])\s*([1-8])([1-8])\b/g, '$1$2 to $1$3');
+
+        // Split concatenated squares like "e2e4" -> "e2 to e4"
+        s = s.replace(/([a-h][1-8])\s*([a-h][1-8])/g, '$1 to $2');
+
+        // Join separated file + rank like "e 4" -> "e4"
+        s = s.replace(/\b([a-h])\s+([1-8])\b/g, '$1$2');
+        s = s.replace(/\s+/g, ' ').trim();
+        return s;
+      }
+
+      // Try parsing a single normalized string; returns true if matched & executed
+      function tryExecuteNormalizedCommand(norm, isInterim = false) {
+        if (!norm) return false;
+
+        // 0. Screen navigation voice commands
+        if (/\b(play with computer|computer|vs computer|ai mode)\b/.test(norm)) {
+          showScreen('game', 'ai');
+          return true;
+        }
+        if (/\b(play with friend|friend|lan|two player|dost)\b/.test(norm)) {
+          showScreen('game', 'lan');
+          return true;
+        }
+        if (/\b(home|main menu|change mode|go back home)\b/.test(norm)) {
+          showScreen('home');
+          return true;
+        }
+
+        // If on Screen 1 and the user speaks a chess move directly, open the game screen automatically!
+        if (currentScreen === 'home' && /[a-h][1-8]/.test(norm)) {
+          showScreen('game', gameMode || 'ai');
+        }
+
+        // 1. Global utility commands (only execute on final or clear pause)
+        if (!isInterim) {
+          if (/\b(new game|restart|start over|reset board)\b/.test(norm)) {
+            initGame(true);
+            announce('Started a new game. White to move.');
+            return true;
+          }
+          if (/\b(undo|take back|go back)\b/.test(norm)) {
+            handleUndo(false);
+            return true;
+          }
+          if (/\b(flip board|rotate board|switch view)\b/.test(norm)) {
+            boardFlipped = !boardFlipped;
+            drawBoard();
+            announce('Board flipped.');
+            return true;
+          }
+          if (/\b(hint|suggest|best move|help me move)\b/.test(norm)) {
+            giveHint();
+            return true;
+          }
+          if (/\b(read board|status|whose turn|game status)\b/.test(norm)) {
+            readBoardStatus();
+            return true;
+          }
+          if (/\b(legal moves|where can i move|available moves|options)\b/.test(norm)) {
+            readLegalMoves();
+            return true;
+          }
+        }
+
+        if (gameOver || !canLocalPlayerMove()) return false;
+
+        const legalMoves = getLegalMoves();
+
+        // 2. Castling
+        if (/\b(castle|castling)\b/.test(norm)) {
+          const wantsQueen = /\b(queen|queenside|long)\b/.test(norm);
+          const castleMove = legalMoves.find(m => m.castle === (wantsQueen ? 'Q' : 'K')) ||
+                             legalMoves.find(m => m.castle);
+          if (castleMove) {
+            executeMove(castleMove, false);
+            return true;
+          }
+        }
+
+        const squaresFound = norm.match(/[a-h][1-8]/g) || [];
+
+        let mentionedPiece = null;
+        if (/\bknight\b/.test(norm)) mentionedPiece = 'n';
+        else if (/\bbishop\b/.test(norm)) mentionedPiece = 'b';
+        else if (/\brook\b/.test(norm)) mentionedPiece = 'r';
+        else if (/\bqueen\b/.test(norm)) mentionedPiece = 'q';
+        else if (/\bking\b/.test(norm)) mentionedPiece = 'k';
+        else if (/\bpawn\b/.test(norm)) mentionedPiece = 'p';
+
+        let promoChoice = 'q';
+        if (/\bpromote\s+to\s+knight\b/.test(norm)) promoChoice = 'n';
+        else if (/\bpromote\s+to\s+rook\b/.test(norm)) promoChoice = 'r';
+        else if (/\bpromote\s+to\s+bishop\b/.test(norm)) promoChoice = 'b';
+
+        // 3. Explicit "select <square>"
+        if (!isInterim && /\b(select|choose|pick)\b/.test(norm) && squaresFound.length === 1) {
+          return selectSquareByVoice(squaresFound[0]);
+        }
+
+        // 4. Two squares mentioned: e.g. "e2 to e4"
+        if (squaresFound.length >= 2) {
+          const fromAlg = squaresFound[0];
+          const toAlg = squaresFound[1];
+
+          // 4A. Exact match (fromAlg -> toAlg)
+          const exactMatch = legalMoves.find(
+            m => m.fromAlg === fromAlg && m.toAlg === toAlg && (!m.promo || m.promo === promoChoice)
+          );
+          if (exactMatch) {
+            executeMove(exactMatch, false);
+            return true;
+          }
+
+          // 4B. Fuzzy Match: What if the mic misheard the first letter (e.g. "A2 से E4" instead of "E2 से E4")?
+          // Check legal moves to `toAlg` that start on the same rank `fromAlg[1]`!
+          const sameOriginRankMatches = legalMoves.filter(
+            m => m.toAlg === toAlg && m.fromAlg[1] === fromAlg[1] && (!m.promo || m.promo === promoChoice)
+          );
+          if (sameOriginRankMatches.length === 1) {
+            executeMove(sameOriginRankMatches[0], false);
+            return true;
+          }
+
+          // 4C. Fuzzy Match: What if the mic misheard the second letter (e.g. "E2 से A4" instead of "E2 से E4")?
+          // Check legal moves from `fromAlg` that end on the same rank `toAlg[1]`!
+          const sameTargetRankMatches = legalMoves.filter(
+            m => m.fromAlg === fromAlg && m.toAlg[1] === toAlg[1] && (!m.promo || m.promo === promoChoice)
+          );
+          if (sameTargetRankMatches.length === 1) {
+            executeMove(sameTargetRankMatches[0], false);
+            return true;
+          }
+
+          // 4D. If only 1 legal move on the entire board goes to `toAlg`, play it!
+          const anyToMatches = legalMoves.filter(
+            m => m.toAlg === toAlg && (!m.promo || m.promo === promoChoice)
+          );
+          if (anyToMatches.length === 1) {
+            executeMove(anyToMatches[0], false);
+            return true;
+          }
+        }
+
+        // 5. Single square mentioned (only on final result or when piece + square is spoken)
+        if (!isInterim && squaresFound.length === 1) {
+          const targetAlg = squaresFound[0];
+
+          if (selectedSq) {
+            const selAlg = sqToAlgebraic(selectedSq.r, selectedSq.c);
+            const fromSelected = legalMoves.find(
+              m => m.fromAlg === selAlg && m.toAlg === targetAlg && (!m.promo || m.promo === promoChoice)
+            );
+            if (fromSelected) {
+              executeMove(fromSelected, false);
+              return true;
+            }
+          }
+
+          let candidates = legalMoves.filter(
+            m => m.toAlg === targetAlg && (!m.promo || m.promo === promoChoice)
+          );
+          if (mentionedPiece) {
+            candidates = candidates.filter(m => m.piece === mentionedPiece);
+          }
+
+          if (candidates.length === 1) {
+            executeMove(candidates[0], false);
+            return true;
+          } else if (candidates.length > 1) {
+            if (!mentionedPiece) {
+              const pawnCand = candidates.filter(m => m.piece === 'p');
+              if (pawnCand.length === 1) {
+                executeMove(pawnCand[0], false);
+                return true;
+              }
+            }
+            const origins = candidates.map(c => `${PIECE_NAMES[c.piece]} on ${c.fromAlg.toUpperCase()}`).join(' or ');
+            announce(`Multiple pieces can move to ${targetAlg.toUpperCase()}: ${origins}. Say "${candidates[0].fromAlg.toUpperCase()} to ${targetAlg.toUpperCase()}".`);
+            return true;
+          }
+
+          const ownMovesFromSq = legalMoves.filter(m => m.fromAlg === targetAlg);
+          if (ownMovesFromSq.length > 0) {
+            return selectSquareByVoice(targetAlg);
+          }
+        }
+
+        // 6. Capture by piece name
+        if (!isInterim && mentionedPiece && /\b(takes|captures|capture)\b/.test(norm)) {
+          const capMoves = legalMoves.filter(m => m.piece === mentionedPiece && m.captured && (!m.promo || m.promo === 'q'));
+          if (capMoves.length === 1) {
+            executeMove(capMoves[0], false);
+            return true;
+          }
+        }
+
+        return false;
+      }
+
+      // Main entry point: accepts either a single string or an array of speech alternatives
+      function processVoiceCommand(inputOrAlternatives, isInterim = false) {
+        const list = Array.isArray(inputOrAlternatives) ? inputOrAlternatives : [inputOrAlternatives];
+        const cleanList = list.map(x => (x || '').trim()).filter(Boolean);
+        if (cleanList.length === 0) return false;
+
+        const transcriptBox = document.getElementById('liveTranscriptText');
+
+        // 1. Test each speech recognition alternative individually
+        for (const raw of cleanList) {
+          const norm = normalizeTranscript(raw);
+          if (tryExecuteNormalizedCommand(norm, isInterim)) {
+            if (transcriptBox) {
+              transcriptBox.textContent = `"${raw}" → [${norm}]`;
+            }
+            return true;
+          }
+        }
+
+        // 2. Combined fallback: sometimes alternative 0 has the first square ("e2") and alternative 1 has the second ("e4")
+        if (cleanList.length > 1) {
+          const combinedNorm = normalizeTranscript(cleanList.join(' '));
+          if (tryExecuteNormalizedCommand(combinedNorm, isInterim)) {
+            if (transcriptBox) {
+              transcriptBox.textContent = `"${cleanList[0]}" → [${combinedNorm}]`;
+            }
+            return true;
+          }
+        }
+
+        if (isInterim) return false;
+
+        const firstRaw = cleanList[0];
+        const firstNorm = normalizeTranscript(firstRaw);
+        if (transcriptBox) {
+          transcriptBox.textContent = `"${firstRaw}" → [${firstNorm}]`;
+        }
+        const squaresFound = firstNorm.match(/[a-h][1-8]/g) || [];
+        if (squaresFound.length >= 2) {
+          announce(`Moving ${squaresFound[0].toUpperCase()} to ${squaresFound[1].toUpperCase()} is not a legal move right now.`);
+        } else {
+          announce(`Heard "${firstRaw}". Say a move like "E2 से E4", "E2 to E4", or "Knight to F3".`);
+        }
+        return false;
+      }
+
+      function selectSquareByVoice(sqAlg) {
+        const sq = algebraicToSq(sqAlg);
+        if (!sq) return false;
+        const p = board[sq.r][sq.c];
+        if (!p || p.color !== turn) return false;
+        const moves = getLegalMoves().filter(m => m.fromAlg === sqAlg && (!m.promo || m.promo === 'q'));
+        if (moves.length === 0) {
+          announce(`Your ${PIECE_NAMES[p.type]} on ${sqAlg.toUpperCase()} has no legal moves.`);
+          return true;
+        }
+        selectedSq = sq;
+        playTone('select');
+        updateUI();
+        drawBoard();
+        const destList = moves.map(m => m.toAlg.toUpperCase()).join(', ');
+        announce(`Selected ${PIECE_NAMES[p.type]} on ${sqAlg.toUpperCase()}. Legal moves: ${destList}.`);
+        return true;
+      }
+
+      function giveHint() {
+        if (gameOver) {
+          announce('Game is over. Say "New game" to play again.');
+          return;
+        }
+        const best = chooseBestMove(board, turn, castling, epSquare, 2);
+        if (!best) return;
+        hintMove = { from: best.from, to: best.to };
+        selectedSq = best.from;
+        drawBoard();
+        updateUI();
+        const pName = PIECE_NAMES[best.piece];
+        announce(`Hint: Move ${pName} from ${best.fromAlg.toUpperCase()} to ${best.toAlg.toUpperCase()}.`);
+      }
+
+      function readBoardStatus() {
+        const who = turn === 'w' ? 'White' : 'Black';
+        const lastStr = moveHistory.length > 0
+          ? `Last move: ${moveHistory[moveHistory.length - 1].spoken}.`
+          : 'No moves played yet.';
+        const chk = inCheck(board, turn) ? `${who} is in check!` : '';
+        announce(`${lastStr} ${who}'s turn. ${chk}`);
+      }
+
+      function readLegalMoves() {
+        const moves = getLegalMoves().filter(m => !m.promo || m.promo === 'q');
+        if (moves.length === 0) {
+          announce('No legal moves available.');
+          return;
+        }
+        if (selectedSq) {
+          const selAlg = sqToAlgebraic(selectedSq.r, selectedSq.c);
+          const sub = moves.filter(m => m.fromAlg === selAlg);
+          if (sub.length > 0) {
+            announce(`From ${selAlg.toUpperCase()}, you can move to: ${sub.map(m => m.toAlg.toUpperCase()).join(', ')}.`);
+            return;
+          }
+        }
+        const sample = moves.slice(0, 5).map(m => `${m.fromAlg.toUpperCase()} to ${m.toAlg.toUpperCase()}`).join(', ');
+        announce(`Examples of legal moves: ${sample}.`);
+      }
+
+      function handleUndo(fromRemote = false) {
+        if (stateStack.length === 0) {
+          announce('Nothing to undo yet.');
+          return;
+        }
+        let steps = (gameMode === 'ai' && turn === 'w' && stateStack.length >= 2) ? 2 : 1;
+        let prev = null;
+        while (steps > 0 && stateStack.length > 0) {
+          prev = stateStack.pop();
+          steps--;
+        }
+        if (prev) {
+          board = prev.board;
+          turn = prev.turn;
+          castling = prev.castling;
+          epSquare = prev.epSquare;
+          lastMove = prev.lastMove;
+          moveHistory = prev.moveHistory;
+          gameOver = prev.gameOver;
+          selectedSq = null;
+          hintMove = null;
+          updateUI();
+          drawBoard();
+          announce('Undid last move.');
+          if (!fromRemote && gameMode === 'lan') {
+            sendLanMessage({ type: 'undo' });
+          }
+        }
+      }
+
+      // ==========================================
+      // 6. HIGH-CLARITY LIGHT THEME CANVAS RENDERER
+      // ==========================================
+      const canvas = document.getElementById('chessCanvas');
+      const ctx = canvas.getContext('2d');
+
+      const UNICODE_PIECES = {
+        w: { k: '♔', q: '♕', r: '♖', b: '♗', n: '♘', p: '♙' },
+        b: { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' }
+      };
+
+      let currentScreen = 'home'; // 'home' or 'game'
+
+      function showScreen(screenName, chosenMode) {
+        currentScreen = screenName;
+        const homeEl = document.getElementById('screenHome');
+        const gameEl = document.getElementById('screenGame');
+        const backBtn = document.getElementById('btnBackToHome');
+
+        if (screenName === 'home') {
+          if (homeEl) homeEl.classList.remove('hidden');
+          if (gameEl) gameEl.classList.add('hidden');
+          if (backBtn) backBtn.classList.add('hidden');
+          announce('Welcome! Choose Play with Computer, or Play with Friend.', false);
+        } else {
+          if (homeEl) homeEl.classList.add('hidden');
+          if (gameEl) gameEl.classList.remove('hidden');
+          if (backBtn) backBtn.classList.remove('hidden');
+
+          if (chosenMode) {
+            gameMode = chosenMode;
+            const modeSelect = document.getElementById('selectGameMode');
+            if (modeSelect) modeSelect.value = chosenMode;
+            const lanPanel = document.getElementById('lanMultiplayerPanel');
+            const aiDiffWrap = document.getElementById('aiDiffWrapper');
+            if (lanPanel) lanPanel.classList.toggle('hidden', gameMode !== 'lan');
+            if (aiDiffWrap) aiDiffWrap.classList.toggle('opacity-40', gameMode !== 'ai');
+            if (gameMode !== 'lan') {
+              lanRole = null;
+              boardFlipped = false;
+              const roleBadge = document.getElementById('lanRoleBadge');
+              if (roleBadge) roleBadge.classList.add('hidden');
+            }
+            initGame(false);
+          }
+
+          setTimeout(resizeCanvas, 20);
+          requestAnimationFrame(resizeCanvas);
+
+          if (chosenMode === 'ai') {
+            announce('Playing with Computer AI. You are White. Speak your move, like E2 से E4 or E2 to E4.');
+          } else if (chosenMode === 'lan') {
+            announce('Play with Friend on LAN selected. Click Host Room on PC 1, or enter the 4-digit Room Code on PC 2.');
+          }
+        }
+      }
+
+      function resizeCanvas() {
+        const container = document.getElementById('canvasContainer');
+        if (!container) return;
+        const rawWidth = container.clientWidth || 440;
+        const size = Math.min(rawWidth, 500);
+        const dpr = window.devicePixelRatio || 1;
+        canvas.style.width = size + 'px';
+        canvas.style.height = size + 'px';
+        canvas.width = Math.floor(size * dpr);
+        canvas.height = Math.floor(size * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        drawBoard();
+      }
+
+      function drawBoard() {
+        const size = parseFloat(canvas.style.width) || 460;
+        ctx.clearRect(0, 0, size, size);
+
+        const margin = Math.max(22, Math.floor(size * 0.06));
+        const boardSize = size - margin * 2;
+        const sqSize = boardSize / 8;
+
+        ctx.fillStyle = '#F1F5F9';
+        ctx.fillRect(0, 0, size, size);
+        ctx.strokeStyle = '#CBD5E1';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(0.75, 0.75, size - 1.5, size - 1.5);
+
+        ctx.fillStyle = '#1E293B';
+        ctx.font = `700 ${Math.max(11, Math.floor(margin * 0.48))}px Inter, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        for (let i = 0; i < 8; i++) {
+          const fileIdx = boardFlipped ? 7 - i : i;
+          const rankNum = boardFlipped ? i + 1 : 8 - i;
+          const fileChar = FILES[fileIdx].toUpperCase();
+          const xCenter = margin + i * sqSize + sqSize / 2;
+          const yCenter = margin + i * sqSize + sqSize / 2;
+
+          ctx.fillText(fileChar, xCenter, margin / 2);
+          ctx.fillText(fileChar, xCenter, size - margin / 2);
+          ctx.fillText(String(rankNum), margin / 2, yCenter);
+          ctx.fillText(String(rankNum), size - margin / 2, yCenter);
+        }
+
+        const legalMoves = getLegalMoves();
+        const selectedLegal = selectedSq
+          ? legalMoves.filter(m => m.from.r === selectedSq.r && m.from.c === selectedSq.c && (!m.promo || m.promo === 'q'))
+          : [];
+        const checkedKing = inCheck(board, turn) ? findKing(board, turn) : null;
+
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            const drawR = boardFlipped ? 7 - r : r;
+            const drawC = boardFlipped ? 7 - c : c;
+            const x = margin + drawC * sqSize;
+            const y = margin + drawR * sqSize;
+
+            const isLight = (r + c) % 2 === 0;
+            ctx.fillStyle = isLight ? '#F8F5EE' : '#CBD5E1';
+            ctx.fillRect(x, y, sqSize, sqSize);
+
+            if (lastMove && ((lastMove.from.r === r && lastMove.from.c === c) || (lastMove.to.r === r && lastMove.to.c === c))) {
+              ctx.fillStyle = isLight ? 'rgba(250, 204, 21, 0.38)' : 'rgba(234, 179, 8, 0.38)';
+              ctx.fillRect(x, y, sqSize, sqSize);
+            }
+
+            if (hintMove && ((hintMove.from.r === r && hintMove.from.c === c) || (hintMove.to.r === r && hintMove.to.c === c))) {
+              ctx.fillStyle = 'rgba(16, 185, 129, 0.32)';
+              ctx.fillRect(x, y, sqSize, sqSize);
+            }
+
+            if (selectedSq && selectedSq.r === r && selectedSq.c === c) {
+              ctx.fillStyle = 'rgba(37, 99, 235, 0.28)';
+              ctx.fillRect(x, y, sqSize, sqSize);
+              ctx.strokeStyle = '#2563EB';
+              ctx.lineWidth = 2.5;
+              ctx.strokeRect(x + 1.5, y + 1.5, sqSize - 3, sqSize - 3);
+            }
+
+            if (checkedKing && checkedKing.r === r && checkedKing.c === c) {
+              ctx.fillStyle = 'rgba(239, 68, 68, 0.42)';
+              ctx.fillRect(x, y, sqSize, sqSize);
+            }
+
+            if (showSquareCoords) {
+              const sqLabel = sqToAlgebraic(r, c).toUpperCase();
+              ctx.font = `600 ${Math.max(9, Math.floor(sqSize * 0.17))}px Inter, sans-serif`;
+              ctx.textAlign = 'left';
+              ctx.textBaseline = 'top';
+              ctx.fillStyle = isLight ? '#64748B' : '#334155';
+              ctx.fillText(sqLabel, x + 3.5, y + 2.5);
+            }
+
+            const p = board[r][c];
+            if (p) {
+              const glyph = UNICODE_PIECES['b'][p.type];
+              ctx.font = `${Math.floor(sqSize * 0.68)}px "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", serif`;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              const cx = x + sqSize / 2;
+              const cy = y + sqSize * 0.54;
+
+              if (p.color === 'w') {
+                ctx.lineWidth = 2.2;
+                ctx.strokeStyle = '#0F172A';
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillText(glyph, cx, cy);
+                ctx.strokeText(glyph, cx, cy);
+              } else {
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = '#FFFFFF';
+                ctx.fillStyle = '#0F172A';
+                ctx.strokeText(glyph, cx, cy);
+                ctx.fillText(glyph, cx, cy);
+              }
+            }
+          }
+        }
+
+        for (const m of selectedLegal) {
+          const drawR = boardFlipped ? 7 - m.to.r : m.to.r;
+          const drawC = boardFlipped ? 7 - m.to.c : m.to.c;
+          const cx = margin + drawC * sqSize + sqSize / 2;
+          const cy = margin + drawR * sqSize + sqSize / 2;
+          const label = m.toAlg.toUpperCase();
+
+          ctx.save();
+          if (m.captured) {
+            ctx.strokeStyle = '#DC2626';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(cx, cy, sqSize * 0.42, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
+          const pillW = Math.max(26, sqSize * 0.52);
+          const pillH = Math.max(16, sqSize * 0.3);
+          ctx.fillStyle = m.captured ? '#DC2626' : '#2563EB';
+          ctx.beginPath();
+          ctx.roundRect(cx - pillW / 2, cy - pillH / 2, pillW, pillH, 6);
+          ctx.fill();
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = `700 ${Math.max(10, Math.floor(sqSize * 0.21))}px Inter, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, cx, cy + 0.5);
+          ctx.restore();
+        }
+
+        ctx.strokeStyle = '#94A3B8';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(margin, margin, boardSize, boardSize);
+      }
+
+      canvas.addEventListener('click', function(e) {
+        if (gameOver || aiThinking || !canLocalPlayerMove()) return;
+        const rect = canvas.getBoundingClientRect();
+        const size = rect.width;
+        const margin = Math.max(22, Math.floor(size * 0.06));
+        const boardSize = size - margin * 2;
+        const sqSize = boardSize / 8;
+
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+        if (clickX < margin || clickX > size - margin || clickY < margin || clickY > size - margin) return;
+
+        const col = Math.floor((clickX - margin) / sqSize);
+        const row = Math.floor((clickY - margin) / sqSize);
+        const r = boardFlipped ? 7 - row : row;
+        const c = boardFlipped ? 7 - col : col;
+
+        const legal = getLegalMoves();
+        if (selectedSq) {
+          const move = legal.find(
+            m => m.from.r === selectedSq.r && m.from.c === selectedSq.c && m.to.r === r && m.to.c === c && (!m.promo || m.promo === 'q')
+          );
+          if (move) {
+            executeMove(move, false);
+            return;
+          }
+        }
+
+        const clickedPiece = board[r][c];
+        if (clickedPiece && clickedPiece.color === turn) {
+          selectSquareByVoice(sqToAlgebraic(r, c));
+        } else {
+          selectedSq = null;
+          updateUI();
+          drawBoard();
+        }
+      });
+
+      // ==========================================
+      // 7. UI SYNCHRONIZATION
+      // ==========================================
+      function updateUI() {
+        const turnBadge = document.getElementById('turnIndicatorBadge');
+        const checkBadge = document.getElementById('checkAlertBadge');
+        const aiBadge = document.getElementById('aiThinkingBadge');
+        const selPill = document.getElementById('selectedSquarePill');
+        const moveCountLbl = document.getElementById('moveCountLabel');
+        const historyBox = document.getElementById('moveHistoryContainer');
+        const topName = document.getElementById('topPlayerName');
+        const botName = document.getElementById('bottomPlayerName');
+
+        if (topName && botName) {
+          if (gameMode === 'lan') {
+            if (lanRole === 'b') {
+              topName.textContent = 'PC 1 — White (LAN)';
+              botName.textContent = 'You — Black (PC 2 LAN)';
+            } else {
+              topName.textContent = 'PC 2 — Black (LAN)';
+              botName.textContent = 'You — White (PC 1 LAN)';
+            }
+          } else if (gameMode === 'ai') {
+            topName.textContent = 'Computer AI (Black)';
+            botName.textContent = 'Player (White)';
+          } else {
+            topName.textContent = 'Player 2 (Black - Voice)';
+            botName.textContent = 'Player 1 (White - Voice)';
+          }
+        }
+
+        if (turnBadge) {
+          if (gameOver) {
+            turnBadge.textContent = 'Game Over';
+            turnBadge.className = 'inline-flex items-center text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-200 text-slate-800';
+          } else if (turn === 'w') {
+            const yours = (gameMode !== 'lan' || lanRole !== 'b') ? ' (Your Turn)' : ' (Opponent)';
+            turnBadge.textContent = `White's Turn${yours}`;
+            turnBadge.className = 'inline-flex items-center text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200';
+          } else {
+            const yours = (gameMode === 'lan' && lanRole === 'b') ? ' (Your Turn)' : '';
+            turnBadge.textContent = `Black's Turn${yours}`;
+            turnBadge.className = 'inline-flex items-center text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200';
+          }
+        }
+
+        if (checkBadge) checkBadge.classList.toggle('hidden', !inCheck(board, turn));
+        if (aiBadge) aiBadge.classList.toggle('hidden', !aiThinking);
+
+        if (selPill) {
+          if (selectedSq) {
+            selPill.classList.remove('hidden');
+            selPill.textContent = 'Selected: ' + sqToAlgebraic(selectedSq.r, selectedSq.c).toUpperCase();
+          } else {
+            selPill.classList.add('hidden');
+          }
+        }
+
+        if (moveCountLbl) {
+          moveCountLbl.textContent = `${moveHistory.length} move${moveHistory.length === 1 ? '' : 's'}`;
+        }
+
+        if (historyBox) {
+          if (moveHistory.length === 0) {
+            historyBox.innerHTML = '<div class="text-slate-400 italic text-center py-2">No moves yet — say "E2 से E4" or "E2 to E4"!</div>';
+          } else {
+            let html = '';
+            for (let i = 0; i < moveHistory.length; i += 2) {
+              const moveNum = Math.floor(i / 2) + 1;
+              const wMove = moveHistory[i];
+              const bMove = moveHistory[i + 1];
+              html += `
+                <div class="flex items-center justify-between px-2 py-1 rounded-lg bg-white border border-slate-200">
+                  <span class="font-bold text-slate-400 w-7">${moveNum}.</span>
+                  <span class="font-semibold text-slate-800 flex-1">${wMove.notation} <span class="text-slate-400 font-normal">(${wMove.fromAlg}→${wMove.toAlg})</span></span>
+                  <span class="font-semibold text-slate-700 flex-1">${bMove ? `${bMove.notation} <span class="text-slate-400 font-normal">(${bMove.fromAlg}→${bMove.toAlg})</span>` : ''}</span>
+                </div>
+              `;
+            }
+            historyBox.innerHTML = html;
+            historyBox.scrollTop = historyBox.scrollHeight;
+          }
+        }
+
+        const startCounts = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+        const currentCounts = { w: { p: 0, n: 0, b: 0, r: 0, q: 0 }, b: { p: 0, n: 0, b: 0, r: 0, q: 0 } };
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            const p = board[r][c];
+            if (p && currentCounts[p.color][p.type] !== undefined) currentCounts[p.color][p.type]++;
+          }
+        }
+        const renderCaptured = (missingColor) => {
+          let s = '';
+          for (const t of ['q', 'r', 'b', 'n', 'p']) {
+            const diff = Math.max(0, startCounts[t] - currentCounts[missingColor][t]);
+            for (let k = 0; k < diff; k++) s += UNICODE_PIECES[missingColor][t];
+          }
+          return s || '';
+        };
+        const topCapEl = document.getElementById('capturedByTop');
+        const botCapEl = document.getElementById('capturedByBottom');
+        if (topCapEl) topCapEl.textContent = renderCaptured('w');
+        if (botCapEl) botCapEl.textContent = renderCaptured('b');
+      }
+
+      // ==========================================
+      // 8. IMPROVED WEB SPEECH API RECOGNITION
+      // ==========================================
+      let recognition = null;
+      let isListeningWanted = false;
+      let isRecActive = false;
+      let interimDebounceTimer = null;
+      let executedResultIndices = new Set();
+
+      function setupSpeechRecognition() {
+        const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const permBadge = document.getElementById('micPermissionBadge');
+        if (!SpeechRec) {
+          if (permBadge) {
+            permBadge.textContent = 'Use Command Box Below';
+            permBadge.className = 'text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200';
+          }
+          return null;
+        }
+
+        const rec = new SpeechRec();
+        rec.continuous = true;
+        rec.interimResults = true;
+        rec.maxAlternatives = 5;
+        const langSel = document.getElementById('selectVoiceLang');
+        rec.lang = langSel ? langSel.value : 'en-IN';
+
+        rec.onstart = function() {
+          isRecActive = true;
+          executedResultIndices.clear();
+          updateMicUI(true);
+          if (permBadge) {
+            permBadge.textContent = `Listening (${rec.lang})`;
+            permBadge.className = 'text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200';
+          }
+        };
+
+        rec.onresult = function(event) {
+          if (interimDebounceTimer) {
+            clearTimeout(interimDebounceTimer);
+            interimDebounceTimer = null;
+          }
+
+          const transcriptBox = document.getElementById('liveTranscriptText');
+          const statusEl = document.getElementById('assistantAnnouncement');
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (executedResultIndices.has(i)) continue;
+            const res = event.results[i];
+
+            const alternatives = [];
+            for (let j = 0; j < res.length; j++) {
+              if (res[j] && res[j].transcript) alternatives.push(res[j].transcript);
+            }
+
+            if (res.isFinal) {
+              executedResultIndices.add(i);
+              processVoiceCommand(alternatives, false);
+            } else {
+              const interim = alternatives[0] || '';
+              if (interim) {
+                const previewNorm = normalizeTranscript(interim);
+                if (transcriptBox) {
+                  transcriptBox.textContent = `🎙️ "${interim.trim()}" → [${previewNorm}]`;
+                }
+                if (statusEl) {
+                  statusEl.textContent = `🎙️ Hearing: "${interim.trim()}"...`;
+                }
+                // Fast interim execution if the user pauses for 600ms after speaking a valid 2-square move
+                const capturedIdx = i;
+                const capturedAlts = [...alternatives];
+                interimDebounceTimer = setTimeout(() => {
+                  if (!executedResultIndices.has(capturedIdx)) {
+                    if (processVoiceCommand(capturedAlts, true)) {
+                      executedResultIndices.add(capturedIdx);
+                    }
+                  }
+                }, 600);
+              }
+            }
+          }
+        };
+
+        rec.onerror = function(event) {
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            isListeningWanted = false;
+            isRecActive = false;
+            updateMicUI(false);
+            if (permBadge) {
+              permBadge.textContent = 'Mic Blocked in Frame — Use Command Box';
+              permBadge.className = 'text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200';
+            }
+            announce('Browser blocked microphone inside this preview frame. Please allow microphone permission in your browser address bar, open in a full tab, or type in the Command Box.', false);
+          }
+        };
+
+        rec.onend = function() {
+          isRecActive = false;
+          if (isListeningWanted) {
+            setTimeout(() => {
+              if (isListeningWanted && !isRecActive) {
+                try {
+                  const langSelNow = document.getElementById('selectVoiceLang');
+                  if (langSelNow) rec.lang = langSelNow.value;
+                  rec.start();
+                } catch (e) {}
+              }
+            }, 120);
+          } else {
+            updateMicUI(false);
+          }
+        };
+
+        return rec;
+      }
+
+      function updateMicUI(active) {
+        const btn = document.getElementById('btnToggleMic');
+        const label = document.getElementById('micBtnLabel');
+        const icon = document.getElementById('micIcon');
+        const badge = document.getElementById('voiceStateBadge');
+        const boardMicBtn = document.getElementById('btnBoardMic');
+
+        if (active) {
+          btn.className = 'inline-flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-xs sm:text-sm bg-red-600 hover:bg-red-700 text-white shadow-xs transition mic-pulse';
+          label.textContent = 'Listening... (Click to Stop)';
+          icon.className = 'w-2.5 h-2.5 rounded-full bg-white animate-ping';
+          if (badge) {
+            badge.className = 'w-9 h-9 rounded-xl bg-red-600 text-white flex items-center justify-center text-base shrink-0 font-bold mic-pulse';
+          }
+          if (boardMicBtn) {
+            boardMicBtn.textContent = '🎙️ Mic: ON (Speak Now)';
+            boardMicBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-xs transition mic-pulse';
+          }
+        } else {
+          btn.className = 'inline-flex items-center gap-2 px-4 py-2 rounded-xl font-semibold text-xs sm:text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition';
+          label.textContent = 'Start Voice Control';
+          icon.className = 'w-2.5 h-2.5 rounded-full bg-white';
+          if (badge) {
+            badge.className = 'w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center text-base shrink-0 font-bold';
+          }
+          if (boardMicBtn) {
+            boardMicBtn.textContent = '🎙️ Mic: OFF (Tap to Speak)';
+            boardMicBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition';
+          }
+        }
+      }
+
+      function startMicrophoneIfPossible() {
+        ensureAudioCtx();
+        if (!recognition) {
+          recognition = setupSpeechRecognition();
+        }
+        if (!recognition) return;
+        if (!isListeningWanted) {
+          isListeningWanted = true;
+          const langSel = document.getElementById('selectVoiceLang');
+          if (langSel) recognition.lang = langSel.value;
+          try {
+            if (!isRecActive) recognition.start();
+          } catch (e) {}
+        }
+      }
+
+      function toggleMicrophone() {
+        ensureAudioCtx();
+        if (!recognition) {
+          recognition = setupSpeechRecognition();
+        }
+        if (!recognition) {
+          announce('Speech recognition is not supported in this browser. Use the Command Box on the right.', false);
+          document.getElementById('voiceCommandInput').focus();
+          return;
+        }
+        if (isListeningWanted) {
+          isListeningWanted = false;
+          try { recognition.stop(); } catch (e) {}
+          updateMicUI(false);
+          announce('Voice control paused.', false);
+        } else {
+          isListeningWanted = true;
+          const langSel = document.getElementById('selectVoiceLang');
+          if (langSel) recognition.lang = langSel.value;
+          playTone('select');
+          try {
+            if (!isRecActive) recognition.start();
+            announce('Microphone listening! Speak your move now, e.g. "E2 से E4" or "E2 to E4".', false);
+          } catch (e) {
+            updateMicUI(true);
+          }
+        }
+      }
+
+      // ==========================================
+      // 9. EVENT LISTENERS & INITIALIZATION
+      // ==========================================
+      window.addEventListener('load', function() {
+        initGame(false);
+        resizeCanvas();
+        setupBroadcastAndLocalLan();
+        window.addEventListener('resize', resizeCanvas);
+
+        document.getElementById('btnToggleMic').addEventListener('click', toggleMicrophone);
+
+        document.getElementById('selectVoiceLang').addEventListener('change', function(e) {
+          if (recognition) {
+            recognition.lang = e.target.value;
+            if (isListeningWanted && isRecActive) {
+              try { recognition.stop(); } catch (err) {}
+            }
+          }
+        });
+
+        document.getElementById('btnBoardMic').addEventListener('click', toggleMicrophone);
+        document.getElementById('btnChooseComputer').addEventListener('click', function() {
+          ensureAudioCtx();
+          startMicrophoneIfPossible();
+          showScreen('game', 'ai');
+        });
+        document.getElementById('btnChooseFriend').addEventListener('click', function() {
+          ensureAudioCtx();
+          startMicrophoneIfPossible();
+          showScreen('game', 'lan');
+        });
+        document.getElementById('btnBackToHome').addEventListener('click', function() {
+          showScreen('home');
+        });
+
+        document.getElementById('btnHostLan').addEventListener('click', hostLanRoom);
+        document.getElementById('btnJoinLan').addEventListener('click', joinLanRoom);
+
+        document.getElementById('btnToggleSpeech').addEventListener('click', function() {
+          speechEnabled = !speechEnabled;
+          document.getElementById('ttsStatusIcon').textContent = speechEnabled ? '🔊' : '🔇';
+          document.getElementById('ttsStatusText').textContent = `Voice Readback: ${speechEnabled ? 'ON' : 'OFF'}`;
+          if (!speechEnabled && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+        });
+
+        document.getElementById('btnToggleSound').addEventListener('click', function() {
+          soundEnabled = !soundEnabled;
+          document.getElementById('sfxStatusIcon').textContent = soundEnabled ? '🔔' : '🔕';
+          document.getElementById('sfxStatusText').textContent = `Sound FX: ${soundEnabled ? 'ON' : 'OFF'}`;
+        });
+
+        document.getElementById('btnSpeakHint').addEventListener('click', function() {
+          ensureAudioCtx();
+          giveHint();
+        });
+
+        document.getElementById('btnReadBoard').addEventListener('click', function() {
+          ensureAudioCtx();
+          readBoardStatus();
+        });
+
+        document.getElementById('chkShowCoords').addEventListener('change', function(e) {
+          showSquareCoords = e.target.checked;
+          drawBoard();
+        });
+
+        document.getElementById('btnFlipBoard').addEventListener('click', function() {
+          boardFlipped = !boardFlipped;
+          drawBoard();
+        });
+
+        document.getElementById('btnUndoMove').addEventListener('click', function() {
+          handleUndo(false);
+        });
+
+        document.getElementById('btnNewGame').addEventListener('click', function() {
+          initGame(true);
+          announce('New game started. White to move.');
+        });
+
+        document.getElementById('selectGameMode').addEventListener('change', function(e) {
+          gameMode = e.target.value;
+          const lanPanel = document.getElementById('lanMultiplayerPanel');
+          const aiDiffWrap = document.getElementById('aiDiffWrapper');
+          if (lanPanel) lanPanel.classList.toggle('hidden', gameMode !== 'lan');
+          if (aiDiffWrap) aiDiffWrap.classList.toggle('opacity-40', gameMode !== 'ai');
+          if (gameMode !== 'lan') {
+            lanRole = null;
+            boardFlipped = false;
+            const roleBadge = document.getElementById('lanRoleBadge');
+            if (roleBadge) roleBadge.classList.add('hidden');
+          }
+          initGame(false);
+          updateUI();
+        });
+
+        document.getElementById('selectDifficulty').addEventListener('change', function(e) {
+          aiDifficulty = parseInt(e.target.value, 10) || 2;
+        });
+
+        document.getElementById('voiceSimForm').addEventListener('submit', function(e) {
+          e.preventDefault();
+          ensureAudioCtx();
+          const input = document.getElementById('voiceCommandInput');
+          const val = input.value.trim();
+          if (val) {
+            processVoiceCommand(val);
+            input.value = '';
+          }
+        });
+
+        document.querySelectorAll('.cmd-chip').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            ensureAudioCtx();
+            const cmd = btn.getAttribute('data-cmd');
+            if (cmd) processVoiceCommand(cmd);
+          });
+        });
+
+        const modal = document.getElementById('stepGuideModal');
+        const openModal = () => { modal.classList.remove('hidden'); modal.classList.add('flex'); };
+        const closeModal = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); };
+        document.getElementById('btnOpenStepModal').addEventListener('click', openModal);
+        document.getElementById('btnCloseStepModal').addEventListener('click', closeModal);
+        document.getElementById('btnDoneStepModal').addEventListener('click', closeModal);
+      });
+    })();
+  </script>
+  <script src="op1.js"></script>
 </body>
 </html>
