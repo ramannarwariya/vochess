@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./chess.css">
+  <link rel="stylesheet" href="./op2.css">
   <style>
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -24,7 +24,7 @@
       70% { box-shadow: 0 0 0 12px rgba(220, 38, 38, 0); }
       100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
     }
-    .custom-scroll::-webkit-scrollbar {
+    .custom-scroll::-webkit-scrollsbar {
       width: 6px;
       height: 6px;
     }
@@ -252,6 +252,21 @@
           <button id="btnNewGame" type="button" class="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold transition">
             ✨ New Game
           </button>
+          <button id="btnOfferDraw" type="button" class="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold transition" title="Offer a draw to your opponent">
+            🤝 Draw
+          </button>
+          <button id="btnResign" type="button" class="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold transition" title="Resign the game (press twice to confirm)">
+            🏳️ Resign
+          </button>
+        </div>
+      </div>
+
+      <!-- Draw Offer Prompt (shown only when a draw is offered to you) -->
+      <div id="drawOfferBox" class="hidden w-full max-w-[520px] mt-2.5 flex items-center justify-between gap-2 text-xs bg-amber-50 border border-amber-200 text-amber-900 px-3.5 py-2 rounded-xl" role="alert">
+        <span id="drawOfferText" class="font-semibold">Opponent offers a draw.</span>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button id="btnAcceptDraw" type="button" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition">Accept</button>
+          <button id="btnDeclineDraw" type="button" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-semibold transition">Decline</button>
         </div>
       </div>
     </section>
@@ -513,20 +528,52 @@
         } catch (e) {}
       }
 
+      // --- Own-voice tracking: lets the parser ignore the app's own sentences ---
+      let speechEndedAt = 0;
+      let recentSpokenLines = [];
+
+      function wordsOf(s) {
+        return String(s || '').toLowerCase()
+          .replace(/[^a-z0-9\u0900-\u097f\s]/g, ' ')
+          .split(/\s+/).filter(Boolean);
+      }
+
+      function rememberSpoken(text) {
+        const now = Date.now();
+        speechEndedAt = now;
+        recentSpokenLines.push({ t: now, words: wordsOf(text) });
+        recentSpokenLines = recentSpokenLines.filter(x => now - x.t < 30000);
+      }
+
+      // True when everything the mic "heard" is made of words the app itself just said.
+      function isOwnEcho(raw, windowMs) {
+        const w = wordsOf(raw);
+        if (w.length === 0) return false;
+        const now = Date.now();
+        if (!(isSpeakingNow || now - speechEndedAt < windowMs)) return false;
+        const pool = new Set();
+        recentSpokenLines.forEach(x => {
+          if (now - x.t < 30000) x.words.forEach(k => pool.add(k));
+        });
+        return w.every(k => pool.has(k));
+      }
+
       function announce(text, speakAloud = true) {
         const el = document.getElementById('assistantAnnouncement');
         if (el) el.textContent = text;
         if (speakAloud && speechEnabled && 'speechSynthesis' in window) {
           try {
+            rememberSpoken(text);
             window.speechSynthesis.cancel();
             const utter = new SpeechSynthesisUtterance(text);
             utter.rate = 1.04;
             utter.pitch = 1.0;
             utter.onstart = function() { isSpeakingNow = true; };
             utter.onend = function() {
+              speechEndedAt = Date.now();
               setTimeout(() => { isSpeakingNow = false; }, 180);
             };
-            utter.onerror = function() { isSpeakingNow = false; };
+            utter.onerror = function() { speechEndedAt = Date.now(); isSpeakingNow = false; };
             window.speechSynthesis.speak(utter);
           } catch (e) {
             isSpeakingNow = false;
@@ -625,6 +672,8 @@
         gameOver = false;
         aiThinking = false;
         lastSyncedMoveCount = 0;
+        clearDrawOffer();
+        clearResignArm();
         updateUI();
         drawBoard();
         if (broadcastReset) {
@@ -946,6 +995,7 @@
           promo: move.promo || null
         });
         lastSyncedMoveCount = moveHistory.length;
+        clearDrawOffer();
 
         if (oppInCheck) playTone('check');
         else if (move.captured) playTone('capture');
@@ -980,24 +1030,167 @@
         const checkSuffix = oppInCheck ? ' Check!' : '';
 
         if (gameMode === 'ai' && turn === 'b' && !isRemoteOrAI) {
-          announce(`You played ${spokenDesc}.${checkSuffix} Computer thinking...`, true);
+          announce(`You played ${spokenDesc}.${checkSuffix} The engine is thinking...`, true);
           aiThinking = true;
           updateUI();
           setTimeout(makeAIMove, 500);
         } else if (gameMode === 'ai' && isRemoteOrAI) {
           aiThinking = false;
-          announce(`Computer played ${spokenDesc}.${checkSuffix} Your turn.`, true);
+          announce(`The engine played ${spokenDesc}.${checkSuffix} Your turn.`, true);
           updateUI();
         } else if (gameMode === 'lan') {
           if (isRemoteOrAI) {
             announce(`Opponent played ${spokenDesc}.${checkSuffix} Your turn!`, true);
           } else {
-            announce(`You played ${spokenDesc}.${checkSuffix} Waiting for LAN opponent...`, true);
+            announce(`You played ${spokenDesc}.${checkSuffix} Waiting for your opponent...`, true);
           }
         } else {
           const nextPlayer = turn === 'w' ? 'White' : 'Black';
           announce(`${spokenDesc}.${checkSuffix} ${nextPlayer}'s turn.`, true);
         }
+      }
+
+      // ==========================================
+      // 2B. RESIGN & DRAW
+      // ==========================================
+      let drawOfferedBy = null;   // 'w' / 'b' = side that offered, null = no offer pending
+      let drawOfferMine = false;  // LAN: true if I made the pending offer
+      let resignArmed = false;
+      let resignArmTimer = null;
+
+      function localColor() {
+        if (gameMode === 'lan' && lanRole) return lanRole;
+        if (gameMode === 'ai') return 'w';
+        return turn; // same-PC game: the side whose turn it is
+      }
+
+      function colorName(c) {
+        return c === 'w' ? 'White' : 'Black';
+      }
+
+      function setResignButton(armed) {
+        const btn = document.getElementById('btnResign');
+        if (btn) btn.textContent = armed ? '⚠️ Tap again to confirm' : '🏳️ Resign';
+      }
+
+      function clearResignArm() {
+        resignArmed = false;
+        if (resignArmTimer) { clearTimeout(resignArmTimer); resignArmTimer = null; }
+        setResignButton(false);
+      }
+
+      function clearDrawOffer() {
+        drawOfferedBy = null;
+        drawOfferMine = false;
+        const box = document.getElementById('drawOfferBox');
+        if (box) box.classList.add('hidden');
+      }
+
+      function showDrawPrompt(offerer) {
+        const box = document.getElementById('drawOfferBox');
+        const txt = document.getElementById('drawOfferText');
+        if (txt) {
+          txt.textContent = gameMode === 'lan'
+            ? 'Your opponent offers a draw.'
+            : `${colorName(offerer)} offers a draw — ${colorName(offerer === 'w' ? 'b' : 'w')}, do you accept?`;
+        }
+        if (box) box.classList.remove('hidden');
+      }
+
+      function resignGame(color, fromRemote) {
+        if (gameOver) return;
+        gameOver = true;
+        aiThinking = false;
+        selectedSq = null;
+        hintMove = null;
+        clearDrawOffer();
+        clearResignArm();
+        const winner = color === 'w' ? 'b' : 'w';
+        playTone('capture');
+        updateUI();
+        drawBoard();
+        announce(`${colorName(color)} resigned. ${colorName(winner)} wins!`);
+        if (!fromRemote && gameMode === 'lan') {
+          sendLanMessage({ type: 'resign', color });
+        }
+      }
+
+      // First press arms the button, second press (or saying "resign" again) confirms.
+      function requestResign() {
+        if (gameOver) { announce('The game is already over.'); return; }
+        if (!resignArmed) {
+          resignArmed = true;
+          setResignButton(true);
+          announce(`${colorName(localColor())}, please confirm. Repeat the same action within eight seconds.`);
+          resignArmTimer = setTimeout(clearResignArm, 8000);
+          return;
+        }
+        clearResignArm();
+        resignGame(localColor(), false);
+      }
+
+      function drawGame(message) {
+        if (gameOver) return;
+        gameOver = true;
+        aiThinking = false;
+        selectedSq = null;
+        hintMove = null;
+        clearDrawOffer();
+        clearResignArm();
+        playTone('move');
+        updateUI();
+        drawBoard();
+        announce(`${message} The game ended in a draw.`);
+      }
+
+      function offerDraw() {
+        if (gameOver) { announce('The game is already over.'); return; }
+        if (drawOfferedBy) { announce('A proposal is already waiting for an answer.'); return; }
+        const me = localColor();
+        const other = me === 'w' ? 'b' : 'w';
+        clearResignArm();
+
+        if (gameMode === 'ai') {
+          drawOfferedBy = me;
+          announce('Proposal sent. The engine is thinking...');
+          setTimeout(function() {
+            if (gameOver || drawOfferedBy !== me) return; // a move was played meanwhile
+            drawOfferedBy = null;
+            const blackEdge = -evaluateBoard(board); // positive = computer is ahead
+            if (blackEdge <= 50) drawGame('The engine agreed.');
+            else announce('The engine wants to play on.');
+          }, 700);
+          return;
+        }
+
+        drawOfferedBy = me;
+        if (gameMode === 'lan') {
+          drawOfferMine = true;
+          sendLanMessage({ type: 'drawOffer', color: me });
+          announce('Proposal sent. Waiting for your opponent to answer.');
+        } else {
+          showDrawPrompt(me);
+          announce(`${colorName(me)} proposes a draw. ${colorName(other)}, please answer with the buttons or your voice.`);
+        }
+      }
+
+      function acceptDraw() {
+        if (!drawOfferedBy || gameOver) return;
+        if (gameMode === 'lan') {
+          if (drawOfferMine) { announce('You made the offer. Waiting for your opponent to answer.'); return; }
+          sendLanMessage({ type: 'drawAccept' });
+        }
+        drawGame('Both players agreed.');
+      }
+
+      function declineDraw() {
+        if (!drawOfferedBy || gameOver) return;
+        if (gameMode === 'lan') {
+          if (drawOfferMine) { announce('You made the offer. Waiting for your opponent to answer.'); return; }
+          sendLanMessage({ type: 'drawDecline' });
+        }
+        clearDrawOffer();
+        announce('Declined. Play on!');
       }
 
       // ==========================================
@@ -1097,9 +1290,31 @@
           applyRemoteMove(data.fromAlg, data.toAlg, data.promo || 'q');
         } else if (data.type === 'undo') {
           handleUndo(true);
+        } else if (data.type === 'resign') {
+          if (!gameOver) {
+            const resigner = data.color || (lanRole === 'w' ? 'b' : 'w');
+            resignGame(resigner, true);
+          }
+        } else if (data.type === 'drawOffer') {
+          if (!gameOver && !drawOfferedBy) {
+            drawOfferedBy = data.color || (lanRole === 'w' ? 'b' : 'w');
+            drawOfferMine = false;
+            showDrawPrompt(drawOfferedBy);
+            playTone('select');
+            announce('Your opponent proposes a draw. Please answer with the buttons or your voice.');
+          }
+        } else if (data.type === 'drawAccept') {
+          if (!gameOver && drawOfferedBy && drawOfferMine) {
+            drawGame('Your opponent agreed.');
+          }
+        } else if (data.type === 'drawDecline') {
+          if (!gameOver && drawOfferedBy && drawOfferMine) {
+            clearDrawOffer();
+            announce('Your opponent wants to play on.');
+          }
         } else if (data.type === 'reset') {
           initGame(false);
-          announce('Opponent started a new game.');
+          announce('Opponent reset the board.');
         }
       }
 
@@ -1123,7 +1338,7 @@
 
         initGame(false);
         setLanStatus(`Room ${code} — Waiting for PC 2`, 'waiting');
-        announce(`Created LAN Room ${code.split('').join(' ')}. Enter code ${code} on the second PC to join as Black.`);
+        announce(`Created Room ${code.split('').join(' ')}. Enter code ${code} on the second PC to join as Black.`);
 
         if (typeof Peer !== 'undefined') {
           try {
@@ -1455,21 +1670,33 @@
       }
 
       // Try parsing a single normalized string; returns true if matched & executed
-      function tryExecuteNormalizedCommand(norm, isInterim = false) {
+      function tryExecuteNormalizedCommand(norm, isInterim = false, ownEcho = false) {
         if (!norm) return false;
 
         // 0. Screen navigation voice commands
-        if (/\b(play with computer|computer|vs computer|ai mode)\b/.test(norm)) {
-          showScreen('game', 'ai');
-          return true;
-        }
-        if (/\b(play with friend|friend|lan|two player|dost)\b/.test(norm)) {
-          showScreen('game', 'lan');
-          return true;
-        }
-        if (/\b(home|main menu|change mode|go back home)\b/.test(norm)) {
-          showScreen('home');
-          return true;
+        // Ignored when the mic is only hearing the app's own voice. On the game screen only
+        // full phrases switch mode, and choosing the mode that is already active never resets the board.
+        if (!ownEcho) {
+          const aiRe = currentScreen === 'home'
+            ? /\b(play with computer|computer|vs computer|ai mode)\b/
+            : /\b(play with computer|vs computer|ai mode)\b/;
+          const lanRe = currentScreen === 'home'
+            ? /\b(play with friend|friend|lan|two player|dost)\b/
+            : /\b(play with friend|two player)\b/;
+          if (aiRe.test(norm)) {
+            if (currentScreen === 'game' && gameMode === 'ai') return true;
+            showScreen('game', 'ai');
+            return true;
+          }
+          if (lanRe.test(norm)) {
+            if (currentScreen === 'game' && gameMode === 'lan') return true;
+            showScreen('game', 'lan');
+            return true;
+          }
+          if (/\b(home|main menu|change mode|go back home)\b/.test(norm)) {
+            showScreen('home');
+            return true;
+          }
         }
 
         // If on Screen 1 and the user speaks a chess move directly, open the game screen automatically!
@@ -1477,11 +1704,27 @@
           showScreen('game', gameMode || 'ai');
         }
 
-        // 1. Global utility commands (only execute on final or clear pause)
-        if (!isInterim) {
+        // 1. Global utility commands (only execute on final or clear pause, never on the app's own echo)
+        if (!isInterim && !ownEcho) {
+          if (/\b(accept|agree)( the| a)? draw\b/.test(norm)) {
+            acceptDraw();
+            return true;
+          }
+          if (/\b(decline|reject|refuse)( the| a)? draw\b/.test(norm)) {
+            declineDraw();
+            return true;
+          }
+          if (/\b(offer( a)? draw|draw offer|propose( a)? draw)\b/.test(norm)) {
+            offerDraw();
+            return true;
+          }
+          if (/\b(resign|i resign|surrender|give up)\b/.test(norm)) {
+            requestResign();
+            return true;
+          }
           if (/\b(new game|restart|start over|reset board)\b/.test(norm)) {
             initGame(true);
-            announce('Started a new game. White to move.');
+            announce('Board is ready. White to move.');
             return true;
           }
           if (/\b(undo|take back|go back)\b/.test(norm)) {
@@ -1644,17 +1887,26 @@
       }
 
       // Main entry point: accepts either a single string or an array of speech alternatives
-      function processVoiceCommand(inputOrAlternatives, isInterim = false) {
+      function processVoiceCommand(inputOrAlternatives, isInterim = false, fromMic = false) {
         const list = Array.isArray(inputOrAlternatives) ? inputOrAlternatives : [inputOrAlternatives];
         const cleanList = list.map(x => (x || '').trim()).filter(Boolean);
         if (cleanList.length === 0) return false;
 
         const transcriptBox = document.getElementById('liveTranscriptText');
 
+        // Microphone only: if everything heard is just the app's own sentence, ignore it completely.
+        if (fromMic && cleanList.every(raw => isOwnEcho(raw, 2500))) {
+          if (transcriptBox && !isInterim) {
+            transcriptBox.textContent = `"${cleanList[0]}" → ignored (app's own voice)`;
+          }
+          return false;
+        }
+
         // 1. Test each speech recognition alternative individually
         for (const raw of cleanList) {
           const norm = normalizeTranscript(raw);
-          if (tryExecuteNormalizedCommand(norm, isInterim)) {
+          const ownEcho = fromMic && isOwnEcho(raw, 6000);
+          if (tryExecuteNormalizedCommand(norm, isInterim, ownEcho)) {
             if (transcriptBox) {
               transcriptBox.textContent = `"${raw}" → [${norm}]`;
             }
@@ -1665,7 +1917,8 @@
         // 2. Combined fallback: sometimes alternative 0 has the first square ("e2") and alternative 1 has the second ("e4")
         if (cleanList.length > 1) {
           const combinedNorm = normalizeTranscript(cleanList.join(' '));
-          if (tryExecuteNormalizedCommand(combinedNorm, isInterim)) {
+          const combinedEcho = fromMic && cleanList.every(raw => isOwnEcho(raw, 6000));
+          if (tryExecuteNormalizedCommand(combinedNorm, isInterim, combinedEcho)) {
             if (transcriptBox) {
               transcriptBox.textContent = `"${cleanList[0]}" → [${combinedNorm}]`;
             }
@@ -1696,7 +1949,7 @@
         if (!p || p.color !== turn) return false;
         const moves = getLegalMoves().filter(m => m.fromAlg === sqAlg && (!m.promo || m.promo === 'q'));
         if (moves.length === 0) {
-          announce(`Your ${PIECE_NAMES[p.type]} on ${sqAlg.toUpperCase()} has no legal moves.`);
+          announce(`Your ${PIECE_NAMES[p.type]} on ${sqAlg.toUpperCase()} cannot move.`);
           return true;
         }
         selectedSq = sq;
@@ -1704,13 +1957,13 @@
         updateUI();
         drawBoard();
         const destList = moves.map(m => m.toAlg.toUpperCase()).join(', ');
-        announce(`Selected ${PIECE_NAMES[p.type]} on ${sqAlg.toUpperCase()}. Legal moves: ${destList}.`);
+        announce(`Selected ${PIECE_NAMES[p.type]} on ${sqAlg.toUpperCase()}. Moves available: ${destList}.`);
         return true;
       }
 
       function giveHint() {
         if (gameOver) {
-          announce('Game is over. Say "New game" to play again.');
+          announce('The game is over. Start a fresh round when you are ready.');
           return;
         }
         const best = chooseBestMove(board, turn, castling, epSquare, 2);
@@ -1720,7 +1973,7 @@
         drawBoard();
         updateUI();
         const pName = PIECE_NAMES[best.piece];
-        announce(`Hint: Move ${pName} from ${best.fromAlg.toUpperCase()} to ${best.toAlg.toUpperCase()}.`);
+        announce(`Try moving ${pName} from ${best.fromAlg.toUpperCase()} to ${best.toAlg.toUpperCase()}.`);
       }
 
       function readBoardStatus() {
@@ -1735,7 +1988,7 @@
       function readLegalMoves() {
         const moves = getLegalMoves().filter(m => !m.promo || m.promo === 'q');
         if (moves.length === 0) {
-          announce('No legal moves available.');
+          announce('You have no moves available.');
           return;
         }
         if (selectedSq) {
@@ -1747,12 +2000,12 @@
           }
         }
         const sample = moves.slice(0, 5).map(m => `${m.fromAlg.toUpperCase()} to ${m.toAlg.toUpperCase()}`).join(', ');
-        announce(`Examples of legal moves: ${sample}.`);
+        announce(`Some moves you can play: ${sample}.`);
       }
 
       function handleUndo(fromRemote = false) {
         if (stateStack.length === 0) {
-          announce('Nothing to undo yet.');
+          announce('No moves have been played yet.');
           return;
         }
         let steps = (gameMode === 'ai' && turn === 'w' && stateStack.length >= 2) ? 2 : 1;
@@ -1769,6 +2022,7 @@
           lastMove = prev.lastMove;
           moveHistory = prev.moveHistory;
           gameOver = prev.gameOver;
+          clearDrawOffer();
           selectedSq = null;
           hintMove = null;
           updateUI();
@@ -1830,9 +2084,9 @@
           requestAnimationFrame(resizeCanvas);
 
           if (chosenMode === 'ai') {
-            announce('Playing with Computer AI. You are White. Speak your move, like E2 से E4 or E2 to E4.');
+            announce('Playing against the engine. You are White. Speak your move, like E2 से E4 or E2 to E4.');
           } else if (chosenMode === 'lan') {
-            announce('Play with Friend on LAN selected. Click Host Room on PC 1, or enter the 4-digit Room Code on PC 2.');
+            announce('Network play selected. Click Host Room on PC 1, or enter the 4-digit Room Code on PC 2.');
           }
         }
       }
@@ -2136,6 +2390,14 @@
         const botCapEl = document.getElementById('capturedByBottom');
         if (topCapEl) topCapEl.textContent = renderCaptured('w');
         if (botCapEl) botCapEl.textContent = renderCaptured('b');
+
+        ['btnResign', 'btnOfferDraw'].forEach(function(id) {
+          const b = document.getElementById(id);
+          if (!b) return;
+          b.disabled = gameOver;
+          b.classList.toggle('opacity-50', gameOver);
+          b.classList.toggle('cursor-not-allowed', gameOver);
+        });
       }
 
       // ==========================================
@@ -2195,7 +2457,7 @@
 
             if (res.isFinal) {
               executedResultIndices.add(i);
-              processVoiceCommand(alternatives, false);
+              processVoiceCommand(alternatives, false, true);
             } else {
               const interim = alternatives[0] || '';
               if (interim) {
@@ -2211,7 +2473,7 @@
                 const capturedAlts = [...alternatives];
                 interimDebounceTimer = setTimeout(() => {
                   if (!executedResultIndices.has(capturedIdx)) {
-                    if (processVoiceCommand(capturedAlts, true)) {
+                    if (processVoiceCommand(capturedAlts, true, true)) {
                       executedResultIndices.add(capturedIdx);
                     }
                   }
@@ -2408,8 +2670,19 @@
 
         document.getElementById('btnNewGame').addEventListener('click', function() {
           initGame(true);
-          announce('New game started. White to move.');
+          announce('Board is ready. White to move.');
         });
+
+        document.getElementById('btnResign').addEventListener('click', function() {
+          ensureAudioCtx();
+          requestResign();
+        });
+        document.getElementById('btnOfferDraw').addEventListener('click', function() {
+          ensureAudioCtx();
+          offerDraw();
+        });
+        document.getElementById('btnAcceptDraw').addEventListener('click', acceptDraw);
+        document.getElementById('btnDeclineDraw').addEventListener('click', declineDraw);
 
         document.getElementById('selectGameMode').addEventListener('change', function(e) {
           gameMode = e.target.value;
@@ -2459,6 +2732,6 @@
       });
     })();
   </script>
-  <script src="chess.js"></script>
+  <script src="op1.js"></script>
 </body>
 </html>
