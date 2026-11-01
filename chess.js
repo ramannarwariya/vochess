@@ -69,12 +69,48 @@
      ================================================================ */
  
   var synth = window.speechSynthesis;
-  var TAIL_MS = 800;        // keep the mic closed this long after speech ends
+  var TAIL_MS = 1500;       // keep the mic closed this long after speech ends
   var quietUntil = 0;       // timestamp until which we treat the room as "noisy"
   var wantMic = false;      // does the app/user want the mic on?
   var micRunning = false;   // is the recognizer actually running right now?
   var internalStop = false; // true while WE (not the app) stop the mic
   var origRecStart = null, origRecStop = null, origRecAbort = null;
+  var latestUtterance = null; // the utterance the app spoke most recently
+  var recentSpoken = [];      // what the app said lately, to recognise its own echo
+
+  function tokens(s) {
+    return String(s || "").toLowerCase()
+      .replace(/[^a-z0-9\u0900-\u097f\s]/g, " ")
+      .split(/\s+/).filter(Boolean);
+  }
+
+  function rememberSpoken(text) {
+    var now = Date.now();
+    recentSpoken.push({ t: now, words: tokens(text) });
+    recentSpoken = recentSpoken.filter(function (x) { return now - x.t < 20000; });
+  }
+
+  // Backstop: a long phrase made only of words the app itself just said is its echo.
+  function isEchoOfRecentSpeech(text) {
+    var w = tokens(text);
+    if (w.length < 5) return false;   // short real commands are never treated as echo
+    var now = Date.now(), pool = {}, hit = 0;
+    recentSpoken.forEach(function (x) {
+      if (now - x.t < 20000) x.words.forEach(function (k) { pool[k] = true; });
+    });
+    w.forEach(function (k) { if (pool[k]) hit++; });
+    return hit / w.length >= 0.8;
+  }
+
+  function eventIsEcho(e) {
+    try {
+      for (var i = e.resultIndex || 0; i < e.results.length; i++) {
+        var r = e.results[i];
+        if (r && r[0] && isEchoOfRecentSpeech(r[0].transcript)) return true;
+      }
+    } catch (err) {}
+    return false;
+  }
  
   function isBusy() {
     try { if (synth && (synth.speaking || synth.pending)) return true; } catch (e) {}
@@ -95,7 +131,7 @@
     rec.addEventListener = function (type, fn, opts) {
       if (type === "result" && typeof fn === "function") {
         return nativeAdd(type, function (e) {
-          if (isBusy()) return;
+          if (isBusy() || eventIsEcho(e)) return;
           return fn.call(this, e);
         }, opts);
       }
@@ -109,7 +145,7 @@
       set: function (fn) { handler = fn; }
     });
     nativeAdd("result", function (e) {
-      if (isBusy()) return;
+      if (isBusy() || eventIsEcho(e)) return;
       if (typeof handler === "function") handler.call(rec, e);
     });
  
@@ -171,12 +207,20 @@
         realStart(lastRecognition);
       }
     }, 250);
+
+    // Watchdog: the mic must never stay open while the app is speaking.
+    setInterval(function () {
+      if (lastRecognition && micRunning && isBusy()) pauseMic();
+    }, 100);
   }
  
   function patchSpeech() {
-    if (!window.SpeechSynthesis || !window.SpeechSynthesis.prototype) return;
-    var origSpeak = window.SpeechSynthesis.prototype.speak;
-    window.SpeechSynthesis.prototype.speak = function (utterance) {
+    // Patch the prototype when available, otherwise the speechSynthesis object itself.
+    var target = (window.SpeechSynthesis && window.SpeechSynthesis.prototype) ||
+                 (window.speechSynthesis && Object.getPrototypeOf(window.speechSynthesis));
+    if (!target || typeof target.speak !== "function") return;
+    var origSpeak = target.speak;
+    target.speak = function (utterance) {
       try {
         var lang = selectedLang();
         if (lang && utterance) {
@@ -191,23 +235,29 @@
           if (voice) utterance.voice = voice;
         }
       } catch (e) {}
- 
+
       // Close the mic BEFORE any sound comes out, and keep it closed
-      // for a short tail after the speech ends.
+      // for a tail after the speech ends.
       try {
         if (utterance) {
-          var markDone = function () { quietUntil = Date.now() + TAIL_MS; };
+          latestUtterance = utterance;
+          rememberSpoken(utterance.text);
+          var markDone = function () {
+            // Only the newest utterance decides when speech is really over
+            // (a cancelled older one must not shorten the quiet time).
+            if (utterance === latestUtterance) quietUntil = Date.now() + TAIL_MS;
+          };
           utterance.addEventListener("end", markDone);
           utterance.addEventListener("error", markDone);
         }
-        quietUntil = Date.now() + TAIL_MS;
+        quietUntil = Math.max(quietUntil, Date.now() + TAIL_MS);
         pauseMic();
       } catch (e) {}
- 
+
       return origSpeak.call(this, utterance);
     };
   }
- 
+
   function addLanguageOptions() {
     var sel = $("selectVoiceLang");
     if (!sel) return;
@@ -517,4 +567,3 @@
     start();
   }
 })();
- 
