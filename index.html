@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./chess.css">
+  <link rel="stylesheet" href="./op2.css">
   <style>
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -36,6 +36,12 @@
       background: #CBD5E1;
       border-radius: 4px;
     }
+    @keyframes goPop { 0% { transform: scale(0.85); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+    .go-pop { animation: goPop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+    .go-confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 45; }
+    .go-confetti span { position: absolute; top: -14px; width: 8px; height: 14px; border-radius: 2px; animation: goFall linear forwards; }
+    @keyframes goFall { to { top: 105vh; margin-left: 60px; } }
+    @media (prefers-reduced-motion: reduce) { .go-pop { animation: none; } }
     canvas {
       touch-action: manipulation;
       user-select: none;
@@ -161,6 +167,22 @@
             Play with Friend (LAN) →
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- Game Records: everything played is stored here, split by Computer / LAN / Same PC -->
+    <div id="recordsPanel" class="w-full mt-10">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h3 class="text-sm font-extrabold uppercase tracking-wider text-slate-700">📊 Game Records</h3>
+        <div class="flex items-center gap-1.5">
+          <button id="btnExportRecords" type="button" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition">⬇️ Export</button>
+          <button id="btnClearRecords" type="button" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition">🗑️ Clear</button>
+        </div>
+      </div>
+      <div id="recordsStats" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3"></div>
+      <div class="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
+        <div id="recordsTabs" class="flex flex-wrap gap-1.5 mb-2.5"></div>
+        <div id="recordsList" class="custom-scroll max-h-80 overflow-y-auto space-y-1.5"></div>
       </div>
     </div>
   </section>
@@ -415,58 +437,40 @@
 
     </aside>
   </main>
-<!-- GAME OVER MODAL (Congratulations You Won / You Lost / Match Drawn) -->
-  <div id="gameOverModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="gameOverTitle">
-    <div id="gameOverCard" class="vc-gameover-card is-win bg-white border-2 border-slate-200 rounded-3xl max-w-md w-full p-6 shadow-2xl text-center overflow-hidden">
-      <canvas id="gameOverConfetti"></canvas>
 
-      <div class="relative z-10">
-        <div id="gameOverBadge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 mb-3">
-          🏆 Victory
+  <!-- Game Over Modal: shown on win / loss / draw -->
+  <div id="gameOverModal" class="fixed inset-0 bg-slate-900/60 z-40 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="goTitle">
+    <div id="gameOverCard" class="go-pop bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-6 shadow-xl text-center">
+      <div id="goIcon" class="text-6xl leading-none" aria-hidden="true">🏆</div>
+      <h2 id="goTitle" class="text-3xl font-extrabold tracking-tight mt-2">Game Over</h2>
+      <p id="goSubtitle" class="text-sm text-slate-600 mt-1.5 min-h-[20px]"></p>
+
+      <div class="grid grid-cols-3 gap-2 mt-5 text-center">
+        <div class="rounded-xl bg-slate-50 border border-slate-200 py-2">
+          <div id="goMoves" class="text-lg font-extrabold text-slate-800">0</div>
+          <div class="text-[10px] uppercase tracking-wider text-slate-400">Moves</div>
         </div>
-
-        <div id="gameOverIcon" class="vc-gameover-icon w-20 h-20 mx-auto rounded-3xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-5xl mb-4 shadow-sm">
-          🏆
+        <div class="rounded-xl bg-slate-50 border border-slate-200 py-2">
+          <div id="goTime" class="text-lg font-extrabold text-slate-800">00:00</div>
+          <div class="text-[10px] uppercase tracking-wider text-slate-400">Time</div>
         </div>
-
-        <h2 id="gameOverTitle" class="is-win-text text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-          Congratulations, You Won!
-        </h2>
-
-        <p id="gameOverSubtitle" class="text-sm font-medium text-slate-600 mt-1.5 leading-relaxed">
-          Checkmate! White wins the match.
-        </p>
-
-        <div class="mt-5 grid grid-cols-3 gap-2 bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs">
-          <div>
-            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Moves</div>
-            <div id="gameOverMoves" class="text-base font-extrabold text-slate-800 mt-0.5">0</div>
-          </div>
-          <div class="border-x border-slate-200">
-            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">White Time</div>
-            <div id="gameOverWhiteTime" class="text-base font-extrabold text-slate-800 mt-0.5">00:00</div>
-          </div>
-          <div>
-            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Black Time</div>
-            <div id="gameOverBlackTime" class="text-base font-extrabold text-slate-800 mt-0.5">00:00</div>
-          </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 py-2 px-1">
+          <div id="goMode" class="text-xs font-extrabold text-slate-800 leading-tight pt-1.5 pb-1">—</div>
+          <div class="text-[10px] uppercase tracking-wider text-slate-400">Mode</div>
         </div>
-
-        <div class="mt-6 flex flex-col sm:flex-row gap-2.5">
-          <button id="btnGameOverPlayAgain" type="button" class="flex-1 py-3 px-4 rounded-2xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition">
-            ✨ Play Again
-          </button>
-          <button id="btnGameOverViewBoard" type="button" class="py-3 px-4 rounded-2xl font-semibold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition">
-            🔍 View Board
-          </button>
-        </div>
-
-        <button id="btnGameOverChangeMode" type="button" class="mt-2.5 text-xs font-semibold text-slate-500 hover:text-slate-800 transition">
-          ← Back to Mode Selection
-        </button>
       </div>
+
+      <div class="mt-5 flex flex-col gap-2">
+        <button id="btnGoPlayAgain" type="button" class="w-full py-3 rounded-2xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition">✨ Play Again</button>
+        <div class="grid grid-cols-2 gap-2">
+          <button id="btnGoReview" type="button" class="py-2.5 rounded-2xl font-semibold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition">🔍 Review Board</button>
+          <button id="btnGoHome" type="button" class="py-2.5 rounded-2xl font-semibold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition">🏠 Main Menu</button>
+        </div>
+      </div>
+      <p class="text-[11px] text-slate-400 mt-3">Saved to Game Records on the main page.</p>
     </div>
   </div>
+
   <!-- Step-by-Step Build & LAN Setup Modal -->
   <div id="stepGuideModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
     <div class="bg-white border border-slate-200 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden">
@@ -539,58 +543,6 @@
           ensureAudioCtx();
           if (!audioCtx) return;
           const now = audioCtx.currentTime;
-          // Multi-note victory / defeat / draw fanfares
-          if (type === 'victory') {
-            const notes = [523.25, 659.25, 783.99, 1046.5];
-            notes.forEach((freq, idx) => {
-              const o = audioCtx.createOscillator();
-              const g = audioCtx.createGain();
-              o.type = 'triangle';
-              o.connect(g);
-              g.connect(audioCtx.destination);
-              const start = now + idx * 0.11;
-              const dur = idx === notes.length - 1 ? 0.45 : 0.14;
-              o.frequency.setValueAtTime(freq, start);
-              g.gain.setValueAtTime(0.18, start);
-              g.gain.exponentialRampToValueAtTime(0.001, start + dur);
-              o.start(start);
-              o.stop(start + dur);
-            });
-            return;
-          } else if (type === 'defeat') {
-            const notes = [392.00, 369.99, 349.23, 293.66];
-            notes.forEach((freq, idx) => {
-              const o = audioCtx.createOscillator();
-              const g = audioCtx.createGain();
-              o.type = 'sawtooth';
-              o.connect(g);
-              g.connect(audioCtx.destination);
-              const start = now + idx * 0.15;
-              const dur = idx === notes.length - 1 ? 0.5 : 0.16;
-              o.frequency.setValueAtTime(freq, start);
-              g.gain.setValueAtTime(0.12, start);
-              g.gain.exponentialRampToValueAtTime(0.001, start + dur);
-              o.start(start);
-              o.stop(start + dur);
-            });
-            return;
-          } else if (type === 'draw') {
-            const notes = [440, 523.25, 440];
-            notes.forEach((freq, idx) => {
-              const o = audioCtx.createOscillator();
-              const g = audioCtx.createGain();
-              o.type = 'sine';
-              o.connect(g);
-              g.connect(audioCtx.destination);
-              const start = now + idx * 0.14;
-              o.frequency.setValueAtTime(freq, start);
-              g.gain.setValueAtTime(0.14, start);
-              g.gain.exponentialRampToValueAtTime(0.001, start + 0.2);
-              o.start(start);
-              o.stop(start + 0.2);
-            });
-            return;
-          }
           const osc = audioCtx.createOscillator();
           const gain = audioCtx.createGain();
           osc.connect(gain);
@@ -661,131 +613,97 @@
         return w.every(k => pool.has(k));
       }
 
+      // ---- Half-duplex mic gate: the microphone is OFF while the app talks, and for a short
+      // ---- tail afterwards, so the app can never hear (and act on) its own voice.
+      const MIC_TAIL_MS = 1400;
+      let micGateUntil = 0;     // mic stays closed until this time (shortened when speech really ends)
+      let micHardUntil = 0;     // safety ceiling in case the browser reports "speaking" forever
+      let latestUtter = null;
+      let micResumeTimer = null;
+
+      function isMicGated() {
+        const now = Date.now();
+        if (now < micGateUntil) return true;
+        try {
+          const s = window.speechSynthesis;
+          if (s && (s.speaking || s.pending) && now < micHardUntil) return true;
+        } catch (e) {}
+        return false;
+      }
+
+      function setMicBadge(text, kind) {
+        const b = document.getElementById('micPermissionBadge');
+        if (!b) return;
+        b.textContent = text;
+        b.className = kind === 'paused'
+          ? 'text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200'
+          : 'text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200';
+      }
+
+      function scheduleMicResume() {
+        clearTimeout(micResumeTimer);
+        micResumeTimer = setTimeout(resumeMicIfWanted, 250);
+      }
+
+      function resumeMicIfWanted() {
+        if (!isListeningWanted || isRecActive || !recognition) return;
+        if (isMicGated()) { scheduleMicResume(); return; }
+        try {
+          const langSel = document.getElementById('selectVoiceLang');
+          if (langSel) recognition.lang = langSel.value;
+          recognition.start();
+        } catch (e) { scheduleMicResume(); }
+      }
+
+      function startRecognitionSafe() {
+        if (isRecActive) return;
+        if (isMicGated()) { scheduleMicResume(); return; }
+        recognition.start();
+      }
+
+      function gateMicForSpeech(text) {
+        const est = 900 + String(text || '').length * 85;   // generous guess of speaking time
+        const now = Date.now();
+        micGateUntil = now + est + MIC_TAIL_MS;
+        micHardUntil = now + est * 2 + 3000;
+        if (recognition && isRecActive) {
+          try { recognition.abort(); } catch (e) {}
+          isRecActive = false;
+          setMicBadge('Paused while speaking…', 'paused');
+        }
+        if (isListeningWanted) scheduleMicResume();
+      }
+
+      function onSpeechFinished(u) {
+        if (u !== latestUtter) return;           // an older, cancelled sentence must not reopen the mic
+        micGateUntil = Date.now() + MIC_TAIL_MS;
+        if (isListeningWanted) scheduleMicResume();
+      }
+
       function announce(text, speakAloud = true) {
         const el = document.getElementById('assistantAnnouncement');
         if (el) el.textContent = text;
         if (speakAloud && speechEnabled && 'speechSynthesis' in window) {
           try {
             rememberSpoken(text);
+            gateMicForSpeech(text);
             window.speechSynthesis.cancel();
             const utter = new SpeechSynthesisUtterance(text);
+            latestUtter = utter;
             utter.rate = 1.04;
             utter.pitch = 1.0;
             utter.onstart = function() { isSpeakingNow = true; };
             utter.onend = function() {
               speechEndedAt = Date.now();
               setTimeout(() => { isSpeakingNow = false; }, 180);
+              onSpeechFinished(utter);
             };
-            utter.onerror = function() { speechEndedAt = Date.now(); isSpeakingNow = false; };
+            utter.onerror = function() { speechEndedAt = Date.now(); isSpeakingNow = false; onSpeechFinished(utter); };
             window.speechSynthesis.speak(utter);
           } catch (e) {
             isSpeakingNow = false;
           }
         }
-      }
-      function hideGameOverModal() {
-        const modal = document.getElementById('gameOverModal');
-        if (modal) {
-          modal.classList.add('hidden');
-          modal.classList.remove('flex');
-        }
-      }
-
-      function presentGameOver(winnerColor, reasonText) {
-        const modal = document.getElementById('gameOverModal');
-        const card = document.getElementById('gameOverCard');
-        const badge = document.getElementById('gameOverBadge');
-        const icon = document.getElementById('gameOverIcon');
-        const title = document.getElementById('gameOverTitle');
-        const subtitle = document.getElementById('gameOverSubtitle');
-        const movesEl = document.getElementById('gameOverMoves');
-
-        let myPerspectiveColor = null;
-        if (gameMode === 'ai') {
-          myPerspectiveColor = 'w';
-        } else if (gameMode === 'lan' && lanRole) {
-          myPerspectiveColor = lanRole;
-        }
-
-        let outcomeType = 'draw';
-        let headingText = 'Match Drawn!';
-        let badgeText = '🤝 Draw Game';
-        let iconChar = '🤝';
-        let spokenResult = '';
-
-        if (winnerColor === 'draw') {
-          outcomeType = 'draw';
-          headingText = 'It\'s a Draw!';
-          badgeText = '🤝 Draw Game';
-          iconChar = '🤝';
-          spokenResult = `${reasonText} The game ended in a draw.`;
-        } else if (myPerspectiveColor) {
-          if (winnerColor === myPerspectiveColor) {
-            outcomeType = 'win';
-            headingText = 'Congratulations, You Won!';
-            badgeText = '🏆 Victory!';
-            iconChar = '🏆';
-            spokenResult = `Congratulations, you won! ${reasonText}`;
-          } else {
-            outcomeType = 'loss';
-            headingText = 'You Lost!';
-            badgeText = '💔 Defeat';
-            iconChar = '💔';
-            spokenResult = `Game over, you lost. ${reasonText}`;
-          }
-        } else {
-          outcomeType = 'win';
-          const winName = winnerColor === 'w' ? 'White' : 'Black';
-          headingText = `Congratulations, ${winName} Won!`;
-          badgeText = `🏆 ${winName} Wins!`;
-          iconChar = '🏆';
-          spokenResult = `Congratulations, ${winName} won! ${reasonText}`;
-        }
-
-        if (card) {
-          card.className = `vc-gameover-card is-${outcomeType} bg-white border-2 rounded-3xl max-w-md w-full p-6 shadow-2xl text-center overflow-hidden`;
-        }
-        if (title) {
-          title.textContent = headingText;
-          title.className = `is-${outcomeType}-text text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight`;
-        }
-        if (subtitle) subtitle.textContent = reasonText;
-        if (icon) {
-          icon.textContent = iconChar;
-          if (outcomeType === 'win') {
-            icon.className = 'vc-gameover-icon w-20 h-20 mx-auto rounded-3xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-5xl mb-4 shadow-sm';
-          } else if (outcomeType === 'loss') {
-            icon.className = 'vc-gameover-icon w-20 h-20 mx-auto rounded-3xl bg-red-100 border border-red-300 flex items-center justify-center text-5xl mb-4 shadow-sm';
-          } else {
-            icon.className = 'vc-gameover-icon w-20 h-20 mx-auto rounded-3xl bg-amber-50 border border-amber-200 flex items-center justify-center text-5xl mb-4 shadow-sm';
-          }
-        }
-        if (badge) {
-          badge.textContent = badgeText;
-          if (outcomeType === 'win') {
-            badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 mb-3';
-          } else if (outcomeType === 'loss') {
-            badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-red-100 text-red-700 border border-red-300 mb-3';
-          } else {
-            badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200 mb-3';
-          }
-        }
-        if (movesEl) movesEl.textContent = String(moveHistory.length);
-
-        if (modal) {
-          modal.classList.remove('hidden');
-          modal.classList.add('flex');
-        }
-
-        if (outcomeType === 'win') playTone('victory');
-        else if (outcomeType === 'loss') playTone('defeat');
-        else playTone('draw');
-
-        if (typeof window.vcTriggerGameOverEffects === 'function') {
-          setTimeout(() => window.vcTriggerGameOverEffects(outcomeType), 60);
-        }
-
-        announce(spokenResult, true);
       }
 
       // ==========================================
@@ -833,6 +751,8 @@
       let aiDifficulty = 2;
       let gameOver = false;
       let aiThinking = false;
+      let halfmove = 0;      // moves since last capture/pawn move (fifty-move rule)
+      let posCounts = {};    // how often each position occurred (threefold repetition)
 
       // LAN State
       let lanRole = null; // 'w' (Host) or 'b' (Guest) or null (any on same LAN server)
@@ -860,6 +780,8 @@
       }
 
       function initGame(broadcastReset = false) {
+        if (!gameRecorded) finalizeGame('unfinished', 'abandoned');
+        gameMeta = null; gameRecorded = false; lastRecordId = null; lastRecordFinal = false;
         const backRank = ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'];
         board = Array.from({ length: 8 }, () => Array(8).fill(null));
         for (let c = 0; c < 8; c++) {
@@ -879,9 +801,12 @@
         gameOver = false;
         aiThinking = false;
         lastSyncedMoveCount = 0;
+        halfmove = 0;
+        posCounts = {};
+        posCounts[positionKey()] = 1;
+        hideGameOver();
         clearDrawOffer();
         clearResignArm();
-        hideGameOverModal();
         updateUI();
         drawBoard();
         if (broadcastReset) {
@@ -1173,7 +1098,9 @@
           epSquare: epSquare ? { ...epSquare } : null,
           lastMove: lastMove ? { ...lastMove } : null,
           moveHistory: [...moveHistory],
-          gameOver
+          gameOver,
+          halfmove,
+          posCounts: { ...posCounts }
         });
 
         const nextState = applyMoveToState(board, castling, move, turn);
@@ -1185,6 +1112,8 @@
         selectedSq = null;
         hintMove = null;
         lastMove = { from: move.from, to: move.to };
+        halfmove = (move.piece === 'p' || move.captured) ? 0 : halfmove + 1;
+        { const pk = positionKey(); posCounts[pk] = (posCounts[pk] || 0) + 1; }
 
         const oppInCheck = inCheck(board, turn);
         const oppLegal = getLegalMoves(board, turn, castling, epSquare);
@@ -1203,6 +1132,7 @@
           promo: move.promo || null
         });
         lastSyncedMoveCount = moveHistory.length;
+        noteGameStarted();
         clearDrawOffer();
 
         if (oppInCheck) playTone('check');
@@ -1224,14 +1154,22 @@
         drawBoard();
 
         if (oppLegal.length === 0) {
-          gameOver = true;
-          updateUI();
           if (oppInCheck) {
-            const winner = moverColor === 'w' ? 'White' : 'Black';
-            presentGameOver(moverColor, `Checkmate! ${spokenDesc}. ${winner} wins the match.`);
+            const res = moverColor === 'w' ? 'white' : 'black';
+            endGame(res, 'checkmate', `Checkmate! ${spokenDesc}. ${winLine(res)}`);
           } else {
-            presentGameOver('draw', `Stalemate after ${spokenDesc}. No legal moves remain.`);
+            endGame('draw', 'stalemate', `Stalemate! ${spokenDesc}. Draw game.`);
           }
+          return;
+        }
+
+        // Automatic draws
+        let autoDraw = null;
+        if (insufficientMaterial(board)) autoDraw = 'insufficient material';
+        else if (posCounts[positionKey()] >= 3) autoDraw = 'threefold repetition';
+        else if (halfmove >= 100) autoDraw = 'fifty-move rule';
+        if (autoDraw) {
+          endGame('draw', autoDraw, `${spokenDesc}. Draw by ${autoDraw}.`);
           return;
         }
 
@@ -1307,16 +1245,9 @@
 
       function resignGame(color, fromRemote) {
         if (gameOver) return;
-        gameOver = true;
-        aiThinking = false;
-        selectedSq = null;
-        hintMove = null;
-        clearDrawOffer();
-        clearResignArm();
         const winner = color === 'w' ? 'b' : 'w';
-        updateUI();
-        drawBoard();
-        presentGameOver(winner, `${colorName(color)} resigned. ${colorName(winner)} wins the match!`);
+        const res = winner === 'w' ? 'white' : 'black';
+        endGame(res, 'resignation', `${colorName(color)} resigned. ${winLine(res)}`);
         if (!fromRemote && gameMode === 'lan') {
           sendLanMessage({ type: 'resign', color });
         }
@@ -1336,17 +1267,9 @@
         resignGame(localColor(), false);
       }
 
-      function drawGame(message) {
+      function drawGame(message, reason) {
         if (gameOver) return;
-        gameOver = true;
-        aiThinking = false;
-        selectedSq = null;
-        hintMove = null;
-        clearDrawOffer();
-        clearResignArm();
-        updateUI();
-        drawBoard();
-        presentGameOver('draw', message);
+        endGame('draw', reason || 'draw agreed', `${message} The game ended in a draw.`);
       }
 
       function offerDraw() {
@@ -2141,9 +2064,9 @@
         }
         const squaresFound = firstNorm.match(/[a-h][1-8]/g) || [];
         if (squaresFound.length >= 2) {
-          announce(`Moving ${squaresFound[0].toUpperCase()} to ${squaresFound[1].toUpperCase()} is not a legal move right now.`);
+          announce(`Moving ${squaresFound[0].toUpperCase()} to ${squaresFound[1].toUpperCase()} is not a legal move right now.`, !fromMic);
         } else {
-          announce(`Heard "${firstRaw}". Say a move like "E2 से E4", "E2 to E4", or "Knight to F3".`);
+          announce(`Heard "${firstRaw}". Say a move like "E2 से E4", "E2 to E4", or "Knight to F3".`, !fromMic);
         }
         return false;
       }
@@ -2228,6 +2151,10 @@
           lastMove = prev.lastMove;
           moveHistory = prev.moveHistory;
           gameOver = prev.gameOver;
+          halfmove = prev.halfmove || 0;
+          posCounts = prev.posCounts || {};
+          reopenRecordIfUndone();
+          if (!gameOver) hideGameOver();
           clearDrawOffer();
           selectedSq = null;
           hintMove = null;
@@ -2263,6 +2190,8 @@
           if (homeEl) homeEl.classList.remove('hidden');
           if (gameEl) gameEl.classList.add('hidden');
           if (backBtn) backBtn.classList.add('hidden');
+          finalizeGame('unfinished', 'left');
+          renderRecords();
           announce('Welcome! Choose Play with Computer, or Play with Friend.', false);
         } else {
           if (homeEl) homeEl.classList.add('hidden');
@@ -2652,6 +2581,7 @@
         };
 
         rec.onresult = function(event) {
+          if (isMicGated()) return;   // never process anything heard while the app is speaking
           if (interimDebounceTimer) {
             clearTimeout(interimDebounceTimer);
             interimDebounceTimer = null;
@@ -2686,6 +2616,7 @@
                 const capturedIdx = i;
                 const capturedAlts = [...alternatives];
                 interimDebounceTimer = setTimeout(() => {
+                  if (isMicGated()) return;
                   if (!executedResultIndices.has(capturedIdx)) {
                     if (processVoiceCommand(capturedAlts, true, true)) {
                       executedResultIndices.add(capturedIdx);
@@ -2713,15 +2644,7 @@
         rec.onend = function() {
           isRecActive = false;
           if (isListeningWanted) {
-            setTimeout(() => {
-              if (isListeningWanted && !isRecActive) {
-                try {
-                  const langSelNow = document.getElementById('selectVoiceLang');
-                  if (langSelNow) rec.lang = langSelNow.value;
-                  rec.start();
-                } catch (e) {}
-              }
-            }, 120);
+            scheduleMicResume();
           } else {
             updateMicUI(false);
           }
@@ -2773,7 +2696,7 @@
           const langSel = document.getElementById('selectVoiceLang');
           if (langSel) recognition.lang = langSel.value;
           try {
-            if (!isRecActive) recognition.start();
+            startRecognitionSafe();
           } catch (e) {}
         }
       }
@@ -2799,7 +2722,7 @@
           if (langSel) recognition.lang = langSel.value;
           playTone('select');
           try {
-            if (!isRecActive) recognition.start();
+            startRecognitionSafe();
             announce('Microphone listening! Speak your move now, e.g. "E2 से E4" or "E2 to E4".', false);
           } catch (e) {
             updateMicUI(true);
@@ -2808,10 +2731,494 @@
       }
 
       // ==========================================
+      // 8B. GAME RECORDS (saved in the browser, shown on the main page)
+      // ==========================================
+      const RECORDS_KEY = 'voiceChessGameRecords_v1';
+      const RECORDS_MAX = 200;
+      const MODE_INFO = {
+        ai:   { icon: '🤖', label: 'vs Computer' },
+        lan:  { icon: '🌐', label: 'LAN (Friend)' },
+        pass: { icon: '👥', label: 'Same PC' }
+      };
+      let gameMeta = null;        // set when the first move of a game is played
+      let gameRecorded = false;   // true once this game has been written to storage
+      let lastRecordId = null;
+      let lastRecordFinal = false;
+      let recordsFilter = 'all';
+      let openRecordId = null;
+      let clearArmed = false;
+      let clearTimer = null;
+
+      function loadRecords() {
+        try {
+          const arr = JSON.parse(localStorage.getItem(RECORDS_KEY) || '[]');
+          return Array.isArray(arr) ? arr : [];
+        } catch (e) { return []; }
+      }
+
+      function saveRecords(list) {
+        try { localStorage.setItem(RECORDS_KEY, JSON.stringify(list.slice(0, RECORDS_MAX))); } catch (e) {}
+      }
+
+      function escHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, ch => (
+          { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+        ));
+      }
+
+      // Called after every move; remembers how/when the game started.
+      function noteGameStarted() {
+        if (gameMeta) return;
+        gameMeta = {
+          mode: gameMode,
+          difficulty: aiDifficulty,
+          myColor: gameMode === 'ai' ? 'w' : (gameMode === 'lan' ? lanRole : null),
+          room: gameMode === 'lan' ? (lanRoomCode || null) : null,
+          startedAt: Date.now()
+        };
+      }
+
+      // result: 'white' | 'black' | 'draw' | 'unfinished'
+      function finalizeGame(result, reason) {
+        if (gameRecorded || !gameMeta || moveHistory.length === 0) return;
+        gameRecorded = true;
+        const now = Date.now();
+        const rec = {
+          id: 'g' + now.toString(36) + Math.random().toString(36).slice(2, 6),
+          mode: gameMeta.mode,
+          difficulty: gameMeta.mode === 'ai' ? gameMeta.difficulty : null,
+          myColor: gameMeta.myColor || null,
+          room: gameMeta.room,
+          startedAt: gameMeta.startedAt,
+          endedAt: now,
+          durationMs: now - gameMeta.startedAt,
+          result: result,
+          reason: reason,
+          moveCount: moveHistory.length,
+          moves: moveHistory.map(m => ({ n: m.notation, f: m.fromAlg, t: m.toAlg }))
+        };
+        const list = loadRecords();
+        list.unshift(rec);
+        saveRecords(list);
+        lastRecordId = rec.id;
+        lastRecordFinal = result !== 'unfinished';
+        renderRecords();
+      }
+
+      // If a finished game is undone (e.g. undo after checkmate), it is no longer finished.
+      function reopenRecordIfUndone() {
+        if (gameRecorded && lastRecordFinal && !gameOver && lastRecordId) {
+          saveRecords(loadRecords().filter(r => r.id !== lastRecordId));
+          gameRecorded = false;
+          lastRecordId = null;
+          lastRecordFinal = false;
+          renderRecords();
+        }
+      }
+
+      function outcomeOf(r) {
+        if (r.result === 'unfinished') return 'unfinished';
+        if (r.result === 'draw') return 'draw';
+        if (!r.myColor) return 'decided';
+        return ((r.result === 'white' && r.myColor === 'w') || (r.result === 'black' && r.myColor === 'b')) ? 'win' : 'loss';
+      }
+
+      function fmtDuration(ms) {
+        const t = Math.max(0, Math.floor(ms / 1000));
+        const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+        const p = n => (n < 10 ? '0' : '') + n;
+        return h > 0 ? `${h}:${p(m)}:${p(s)}` : `${p(m)}:${p(s)}`;
+      }
+
+      function fmtDate(ts) {
+        try {
+          return new Date(ts).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+        } catch (e) { return ''; }
+      }
+
+      function badgeFor(r) {
+        const o = outcomeOf(r);
+        const base = 'text-[11px] font-bold px-2 py-0.5 rounded-full border ';
+        if (o === 'win')  return `<span class="${base}bg-emerald-50 text-emerald-700 border-emerald-200">Won</span>`;
+        if (o === 'loss') return `<span class="${base}bg-red-100 text-red-700 border-red-300">Lost</span>`;
+        if (o === 'draw') return `<span class="${base}bg-amber-50 text-amber-800 border-amber-200">Draw</span>`;
+        if (o === 'decided') return `<span class="${base}bg-blue-50 text-blue-700 border-blue-200">${r.result === 'white' ? 'White won' : 'Black won'}</span>`;
+        return `<span class="${base}bg-slate-100 text-slate-600 border-slate-200">Unfinished</span>`;
+      }
+
+      function reasonText(r) {
+        const map = { checkmate: 'Checkmate', stalemate: 'Stalemate', resignation: 'Resignation',
+                      'draw agreed': 'Draw agreed', 'insufficient material': 'Insufficient material',
+                      'threefold repetition': 'Threefold repetition', 'fifty-move rule': 'Fifty-move rule', abandoned: 'Game was restarted', left: 'Left the game' };
+        return map[r.reason] || r.reason || '';
+      }
+
+      function modeDetail(r) {
+        if (r.mode === 'ai') return ['Easy', 'Medium', 'Hard'][(r.difficulty || 2) - 1] || '';
+        if (r.mode === 'lan') {
+          const side = r.myColor === 'w' ? 'White' : (r.myColor === 'b' ? 'Black' : '');
+          return [side, r.room ? 'Room ' + r.room : ''].filter(Boolean).join(' · ');
+        }
+        return '';
+      }
+
+      function movesText(r) {
+        let out = '';
+        (r.moves || []).forEach((m, i) => {
+          if (i % 2 === 0) out += `${Math.floor(i / 2) + 1}. `;
+          out += m.n + ' ';
+        });
+        return out.trim();
+      }
+
+      function statCard(mode, list) {
+        const info = MODE_INFO[mode];
+        const mine = list.filter(r => r.mode === mode);
+        const done = mine.filter(r => r.result !== 'unfinished');
+        const unfinished = mine.length - done.length;
+        const moves = mine.reduce((a, r) => a + (r.moveCount || 0), 0);
+        const avg = mine.length ? Math.round(moves / mine.length) : 0;
+        let c1, c2, c3, l1, l2, l3, rate = '';
+        if (mode === 'pass') {
+          c1 = done.filter(r => r.result === 'white').length; l1 = 'White';
+          c2 = done.filter(r => r.result === 'draw').length;  l2 = 'Draw';
+          c3 = done.filter(r => r.result === 'black').length; l3 = 'Black';
+        } else {
+          c1 = done.filter(r => outcomeOf(r) === 'win').length;  l1 = 'Won';
+          c2 = done.filter(r => r.result === 'draw').length;     l2 = 'Draw';
+          c3 = done.filter(r => outcomeOf(r) === 'loss').length; l3 = 'Lost';
+          const decided = done.filter(r => outcomeOf(r) !== 'decided').length;
+          if (decided) rate = `Win rate ${Math.round((c1 / decided) * 100)}% · `;
+        }
+        return `
+          <div class="bg-white border border-slate-200 rounded-2xl p-3.5 shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-700">${info.icon} ${info.label}</span>
+              <span class="text-[11px] text-slate-400">${mine.length} game${mine.length === 1 ? '' : 's'}</span>
+            </div>
+            <div class="mt-2 grid grid-cols-3 text-center">
+              <div><div class="text-lg font-extrabold text-emerald-700">${c1}</div><div class="text-[10px] uppercase text-slate-400">${l1}</div></div>
+              <div><div class="text-lg font-extrabold text-amber-800">${c2}</div><div class="text-[10px] uppercase text-slate-400">${l2}</div></div>
+              <div><div class="text-lg font-extrabold text-red-700">${c3}</div><div class="text-[10px] uppercase text-slate-400">${l3}</div></div>
+            </div>
+            <div class="mt-2 text-[11px] text-slate-500">${rate}Avg ${avg} moves${unfinished ? ` · ${unfinished} unfinished` : ''}</div>
+          </div>`;
+      }
+
+      function renderRecords() {
+        const statsEl = document.getElementById('recordsStats');
+        const tabsEl = document.getElementById('recordsTabs');
+        const listEl = document.getElementById('recordsList');
+        if (!statsEl || !tabsEl || !listEl) return;
+
+        const all = loadRecords();
+        statsEl.innerHTML = ['ai', 'lan', 'pass'].map(m => statCard(m, all)).join('');
+
+        const tabs = [['all', 'All'], ['ai', '🤖 Computer'], ['lan', '🌐 LAN'], ['pass', '👥 Same PC']];
+        tabsEl.innerHTML = tabs.map(([key, label]) => {
+          const n = key === 'all' ? all.length : all.filter(r => r.mode === key).length;
+          const on = recordsFilter === key;
+          const cls = on ? 'bg-blue-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700';
+          return `<button type="button" data-filter="${key}" class="px-2.5 py-1 rounded-lg text-xs font-semibold transition ${cls}">${label} (${n})</button>`;
+        }).join('');
+
+        const shown = recordsFilter === 'all' ? all : all.filter(r => r.mode === recordsFilter);
+        if (shown.length === 0) {
+          listEl.innerHTML = '<div class="text-xs text-slate-400 italic text-center py-4">No games saved yet — play a game and it will appear here.</div>';
+          return;
+        }
+        listEl.innerHTML = shown.map(r => {
+          const info = MODE_INFO[r.mode] || { icon: '♟', label: r.mode };
+          const detail = modeDetail(r);
+          const open = openRecordId === r.id;
+          return `
+            <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" data-rec="${escHtml(r.id)}">
+              <div class="flex flex-wrap items-center gap-x-2 gap-y-1 cursor-pointer" data-toggle="${escHtml(r.id)}">
+                <span class="font-bold text-slate-800">${info.icon} ${info.label}</span>
+                ${detail ? `<span class="text-slate-500">${escHtml(detail)}</span>` : ''}
+                ${badgeFor(r)}
+                <span class="text-slate-500">${r.moveCount} moves · ${fmtDuration(r.durationMs)}</span>
+                <span class="ml-auto text-slate-400">${fmtDate(r.endedAt)}</span>
+                <button type="button" data-del="${escHtml(r.id)}" title="Delete this game" class="px-1.5 rounded-md text-slate-400 hover:text-red-700">✕</button>
+              </div>
+              ${open ? `
+                <div class="mt-2 pt-2 border-t border-slate-200 text-slate-600">
+                  <div class="mb-1"><strong class="text-slate-800">Ended by:</strong> ${escHtml(reasonText(r))}</div>
+                  <div class="font-mono leading-relaxed break-words">${escHtml(movesText(r)) || '—'}</div>
+                </div>` : ''}
+            </div>`;
+        }).join('');
+      }
+
+      function exportRecords() {
+        try {
+          const blob = new Blob([JSON.stringify(loadRecords(), null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'voicechess-games.json';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (e) {}
+      }
+
+      function initRecordsUI() {
+        const listEl = document.getElementById('recordsList');
+        const tabsEl = document.getElementById('recordsTabs');
+        const clearBtn = document.getElementById('btnClearRecords');
+        const exportBtn = document.getElementById('btnExportRecords');
+
+        if (tabsEl) tabsEl.addEventListener('click', function(e) {
+          const b = e.target.closest('[data-filter]');
+          if (!b) return;
+          recordsFilter = b.getAttribute('data-filter');
+          renderRecords();
+        });
+
+        if (listEl) listEl.addEventListener('click', function(e) {
+          const del = e.target.closest('[data-del]');
+          if (del) {
+            const id = del.getAttribute('data-del');
+            saveRecords(loadRecords().filter(r => r.id !== id));
+            if (openRecordId === id) openRecordId = null;
+            renderRecords();
+            return;
+          }
+          const tog = e.target.closest('[data-toggle]');
+          if (tog) {
+            const id = tog.getAttribute('data-toggle');
+            openRecordId = openRecordId === id ? null : id;
+            renderRecords();
+          }
+        });
+
+        if (exportBtn) exportBtn.addEventListener('click', exportRecords);
+
+        if (clearBtn) clearBtn.addEventListener('click', function() {
+          if (!clearArmed) {
+            clearArmed = true;
+            clearBtn.textContent = '⚠️ Tap again to confirm';
+            clearTimer = setTimeout(function() {
+              clearArmed = false;
+              clearBtn.textContent = '🗑️ Clear';
+            }, 6000);
+            return;
+          }
+          clearTimeout(clearTimer);
+          clearArmed = false;
+          clearBtn.textContent = '🗑️ Clear';
+          saveRecords([]);
+          openRecordId = null;
+          renderRecords();
+        });
+
+        // Keep the panel fresh if another tab/window (e.g. LAN test on same PC) saves a game
+        window.addEventListener('storage', function(e) {
+          if (e.key === RECORDS_KEY) renderRecords();
+        });
+
+        // Closing the tab mid-game still saves it as "unfinished"
+        window.addEventListener('pagehide', function() {
+          if (!gameOver) finalizeGame('unfinished', 'left');
+        });
+
+        renderRecords();
+      }
+
+      // ==========================================
+      // 8C. PROPER GAME ENDING (win / lose / draw)
+      // ==========================================
+      function positionKey() {
+        let s = '';
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            const p = board[r][c];
+            s += p ? (p.color === 'w' ? p.type.toUpperCase() : p.type) : '.';
+          }
+        }
+        return s + turn + (castling.wK ? 'K' : '') + (castling.wQ ? 'Q' : '') +
+               (castling.bK ? 'k' : '') + (castling.bQ ? 'q' : '') +
+               (epSquare ? sqToAlgebraic(epSquare.r, epSquare.c) : '-');
+      }
+
+      // True when neither side can ever deliver checkmate.
+      function insufficientMaterial(b) {
+        const minors = [];
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            const p = b[r][c];
+            if (!p || p.type === 'k') continue;
+            if (p.type === 'p' || p.type === 'r' || p.type === 'q') return false;
+            minors.push({ type: p.type, shade: (r + c) % 2 });
+          }
+        }
+        if (minors.length <= 1) return true;                       // K vs K, K+B vs K, K+N vs K
+        if (minors.every(m => m.type === 'b')) {                   // only bishops, all on one colour
+          return minors.every(m => m.shade === minors[0].shade);
+        }
+        return false;
+      }
+
+      // Which result is "mine"? ai: White, lan: my role, same-PC: nobody in particular.
+      function viewerOutcome(result) {
+        if (result === 'draw') return 'draw';
+        let me = null;
+        if (gameMode === 'ai') me = 'w';
+        else if (gameMode === 'lan') me = lanRole;
+        if (!me) return 'decided';
+        return ((result === 'white' && me === 'w') || (result === 'black' && me === 'b')) ? 'win' : 'loss';
+      }
+
+      function winLine(result) {
+        const o = viewerOutcome(result);
+        if (o === 'win') return 'You win!';
+        if (o === 'loss') return 'You lose.';
+        return (result === 'white' ? 'White' : 'Black') + ' wins!';
+      }
+
+      // One tidy place where every game finishes.
+      function endGame(result, reason, spokenLine) {
+        gameOver = true;
+        aiThinking = false;
+        selectedSq = null;
+        hintMove = null;
+        clearDrawOffer();
+        clearResignArm();
+        finalizeGame(result, reason);
+        updateUI();
+        drawBoard();
+        const o = viewerOutcome(result);
+        playJingle(o === 'loss' ? 'lose' : (result === 'draw' ? 'draw' : 'win'));
+        announce(spokenLine);
+        showGameOver(result, reason);
+      }
+
+      function playJingle(kind) {
+        if (!soundEnabled) return;
+        try {
+          ensureAudioCtx();
+          if (!audioCtx) return;
+          const seqs = {
+            win:  [[523.25, 0, 0.14], [659.25, 0.14, 0.14], [783.99, 0.28, 0.14], [1046.5, 0.42, 0.4]],
+            lose: [[392.0, 0, 0.22], [349.23, 0.22, 0.22], [293.66, 0.44, 0.22], [196.0, 0.66, 0.5]],
+            draw: [[440.0, 0, 0.2], [440.0, 0.25, 0.2], [329.63, 0.5, 0.4]]
+          };
+          const now = audioCtx.currentTime;
+          (seqs[kind] || []).forEach(function(n) {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = kind === 'lose' ? 'sawtooth' : 'triangle';
+            osc.frequency.setValueAtTime(n[0], now + n[1]);
+            gain.gain.setValueAtTime(0.0001, now + n[1]);
+            gain.gain.exponentialRampToValueAtTime(0.13, now + n[1] + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + n[1] + n[2]);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now + n[1]);
+            osc.stop(now + n[1] + n[2] + 0.05);
+          });
+        } catch (e) {}
+      }
+
+      function launchConfetti() {
+        if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const box = document.createElement('div');
+        box.className = 'go-confetti';
+        const colors = ['#22d3ee', '#34d399', '#fbbf24', '#f43f5e', '#a5b4fc', '#ffffff'];
+        for (let i = 0; i < 70; i++) {
+          const s = document.createElement('span');
+          s.style.left = (Math.random() * 100) + '%';
+          s.style.background = colors[i % colors.length];
+          s.style.animationDelay = (Math.random() * 0.6) + 's';
+          s.style.animationDuration = (2.2 + Math.random() * 1.8) + 's';
+          s.style.transform = 'rotate(' + Math.floor(Math.random() * 360) + 'deg)';
+          box.appendChild(s);
+        }
+        document.body.appendChild(box);
+        setTimeout(function() { box.remove(); }, 4600);
+      }
+
+      function reasonLong(result, reason) {
+        const winner = result === 'white' ? 'White' : 'Black';
+        const loser = result === 'white' ? 'Black' : 'White';
+        switch (reason) {
+          case 'checkmate': return `${winner} checkmated ${loser}.`;
+          case 'resignation': return `${loser} resigned.`;
+          case 'stalemate': return 'Stalemate: the player to move has no legal move but is not in check.';
+          case 'draw agreed': return 'Both players agreed to a draw.';
+          case 'insufficient material': return 'Neither side has enough pieces left to checkmate.';
+          case 'threefold repetition': return 'The same position appeared three times.';
+          case 'fifty-move rule': return 'Fifty moves passed without a capture or pawn move.';
+          default: return '';
+        }
+      }
+
+      function showGameOver(result, reason) {
+        const modal = document.getElementById('gameOverModal');
+        if (!modal) return;
+        const o = viewerOutcome(result);
+        let icon, title, tone;
+        if (o === 'win')       { icon = '🏆'; title = 'You Win!';  tone = 'text-emerald-600'; }
+        else if (o === 'loss') { icon = '💔'; title = 'You Lose';  tone = 'text-red-700'; }
+        else if (o === 'draw') { icon = '🤝'; title = 'Draw';      tone = 'text-amber-800'; }
+        else { icon = '🏆'; title = (result === 'white' ? 'White' : 'Black') + ' Wins!'; tone = 'text-blue-700'; }
+
+        const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+        set('goIcon', icon);
+        set('goSubtitle', reasonLong(result, reason));
+        set('goMoves', String(moveHistory.length));
+        set('goTime', gameMeta ? fmtDuration(Date.now() - gameMeta.startedAt) : '--:--');
+        set('goMode', (MODE_INFO[gameMode] || { label: '' }).label);
+        const t = document.getElementById('goTitle');
+        if (t) { t.textContent = title; t.className = 'text-3xl font-extrabold tracking-tight mt-2 ' + tone; }
+
+        const home = document.getElementById('btnGoHome');
+        if (home) home.textContent = '🏠 Main Menu';
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        if (o === 'win' || o === 'decided') launchConfetti();
+        const again = document.getElementById('btnGoPlayAgain');
+        if (again) setTimeout(function() { try { again.focus(); } catch (e) {} }, 50);
+      }
+
+      function hideGameOver() {
+        const modal = document.getElementById('gameOverModal');
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        document.querySelectorAll('.go-confetti').forEach(function(n) { n.remove(); });
+      }
+
+      function initGameOverUI() {
+        const again = document.getElementById('btnGoPlayAgain');
+        const review = document.getElementById('btnGoReview');
+        const home = document.getElementById('btnGoHome');
+        if (again) again.addEventListener('click', function() {
+          ensureAudioCtx();
+          initGame(gameMode === 'lan');
+          announce('New game. White to move.');
+        });
+        if (review) review.addEventListener('click', hideGameOver);
+        if (home) home.addEventListener('click', function() {
+          hideGameOver();
+          showScreen('home');
+        });
+        document.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') hideGameOver();
+        });
+      }
+
+      // ==========================================
       // 9. EVENT LISTENERS & INITIALIZATION
       // ==========================================
       window.addEventListener('load', function() {
         initGame(false);
+        initRecordsUI();
+        initGameOverUI();
+        setInterval(resumeMicIfWanted, 600);
         resizeCanvas();
         setupBroadcastAndLocalLan();
         window.addEventListener('resize', resizeCanvas);
@@ -2887,20 +3294,6 @@
           announce('Board is ready. White to move.');
         });
 
-        // Game Over Modal Buttons
-        document.getElementById('btnGameOverPlayAgain').addEventListener('click', function() {
-          ensureAudioCtx();
-          initGame(true);
-          announce('New game started! White to move.');
-        });
-        document.getElementById('btnGameOverViewBoard').addEventListener('click', function() {
-          hideGameOverModal();
-        });
-        document.getElementById('btnGameOverChangeMode').addEventListener('click', function() {
-          hideGameOverModal();
-          showScreen('home');
-        });
-
         document.getElementById('btnResign').addEventListener('click', function() {
           ensureAudioCtx();
           requestResign();
@@ -2960,6 +3353,6 @@
       });
     })();
   </script>
-  <script src="chess.js"></script>
+  <script src="op1.js"></script>
 </body>
 </html>
