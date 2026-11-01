@@ -2105,6 +2105,30 @@
         drawBoard();
       }
 
+      // Draws one piece as a solid silhouette: white pieces are pure white, black pieces are pure black.
+      function drawPiece(p, cx, cy, sqSize) {
+        // \uFE0E forces the plain-text (not emoji) look for every piece
+        const glyph = UNICODE_PIECES['b'][p.type] + '\uFE0E';
+        const solid = p.color === 'w' ? '#FFFFFF' : '#000000';
+        ctx.save();
+        ctx.font = `${Math.floor(sqSize * 0.74)}px "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineJoin = 'round';
+        // soft shadow only (no coloured outline)
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+        ctx.shadowBlur = sqSize * 0.07;
+        ctx.shadowOffsetY = sqSize * 0.03;
+        ctx.fillStyle = solid;
+        ctx.fillText(glyph, cx, cy);
+        // same-colour stroke fills the small cut-outs so the whole piece is one solid colour
+        ctx.shadowColor = 'transparent';
+        ctx.lineWidth = Math.max(2, sqSize * 0.05);
+        ctx.strokeStyle = solid;
+        ctx.strokeText(glyph, cx, cy);
+        ctx.restore();
+      }
+
       function drawBoard() {
         const size = parseFloat(canvas.style.width) || 460;
         ctx.clearRect(0, 0, size, size);
@@ -2151,7 +2175,7 @@
             const y = margin + drawR * sqSize;
 
             const isLight = (r + c) % 2 === 0;
-            ctx.fillStyle = isLight ? '#F8F5EE' : '#CBD5E1';
+            ctx.fillStyle = isLight ? '#9FB1C3' : '#5E7388';
             ctx.fillRect(x, y, sqSize, sqSize);
 
             if (lastMove && ((lastMove.from.r === r && lastMove.from.c === c) || (lastMove.to.r === r && lastMove.to.c === c))) {
@@ -2182,32 +2206,13 @@
               ctx.font = `600 ${Math.max(9, Math.floor(sqSize * 0.17))}px Inter, sans-serif`;
               ctx.textAlign = 'left';
               ctx.textBaseline = 'top';
-              ctx.fillStyle = isLight ? '#64748B' : '#334155';
+              ctx.fillStyle = isLight ? '#2F4256' : '#E3EBF3';
               ctx.fillText(sqLabel, x + 3.5, y + 2.5);
             }
 
             const p = board[r][c];
             if (p) {
-              const glyph = UNICODE_PIECES['b'][p.type];
-              ctx.font = `${Math.floor(sqSize * 0.68)}px "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", serif`;
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              const cx = x + sqSize / 2;
-              const cy = y + sqSize * 0.54;
-
-              if (p.color === 'w') {
-                ctx.lineWidth = 2.2;
-                ctx.strokeStyle = '#0F172A';
-                ctx.fillStyle = '#FFFFFF';
-                ctx.fillText(glyph, cx, cy);
-                ctx.strokeText(glyph, cx, cy);
-              } else {
-                ctx.lineWidth = 1.5;
-                ctx.strokeStyle = '#FFFFFF';
-                ctx.fillStyle = '#0F172A';
-                ctx.strokeText(glyph, cx, cy);
-                ctx.fillText(glyph, cx, cy);
-              }
+              drawPiece(p, x + sqSize / 2, y + sqSize * 0.58, sqSize);
             }
           }
         }
@@ -2379,17 +2384,20 @@
           }
         }
         const renderCaptured = (missingColor) => {
+          const style = missingColor === 'w'
+            ? 'color:#FFFFFF;background:#5E7388;'
+            : 'color:#000000;background:#C9D5E1;';
           let s = '';
           for (const t of ['q', 'r', 'b', 'n', 'p']) {
             const diff = Math.max(0, startCounts[t] - currentCounts[missingColor][t]);
-            for (let k = 0; k < diff; k++) s += UNICODE_PIECES[missingColor][t];
+            for (let k = 0; k < diff; k++) s += UNICODE_PIECES['b'][t] + '\uFE0E';
           }
-          return s || '';
+          return s ? `<span style="${style}display:inline-block;padding:1px 6px;border-radius:6px;font-size:18px;line-height:1.2;letter-spacing:1px;">${s}</span>` : '';
         };
         const topCapEl = document.getElementById('capturedByTop');
         const botCapEl = document.getElementById('capturedByBottom');
-        if (topCapEl) topCapEl.textContent = renderCaptured('w');
-        if (botCapEl) botCapEl.textContent = renderCaptured('b');
+        if (topCapEl) topCapEl.innerHTML = renderCaptured('w');
+        if (botCapEl) botCapEl.innerHTML = renderCaptured('b');
 
         ['btnResign', 'btnOfferDraw'].forEach(function(id) {
           const b = document.getElementById(id);
