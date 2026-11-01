@@ -415,7 +415,58 @@
 
     </aside>
   </main>
+<!-- GAME OVER MODAL (Congratulations You Won / You Lost / Match Drawn) -->
+  <div id="gameOverModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="gameOverTitle">
+    <div id="gameOverCard" class="vc-gameover-card is-win bg-white border-2 border-slate-200 rounded-3xl max-w-md w-full p-6 shadow-2xl text-center overflow-hidden">
+      <canvas id="gameOverConfetti"></canvas>
 
+      <div class="relative z-10">
+        <div id="gameOverBadge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 mb-3">
+          🏆 Victory
+        </div>
+
+        <div id="gameOverIcon" class="vc-gameover-icon w-20 h-20 mx-auto rounded-3xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-5xl mb-4 shadow-sm">
+          🏆
+        </div>
+
+        <h2 id="gameOverTitle" class="is-win-text text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+          Congratulations, You Won!
+        </h2>
+
+        <p id="gameOverSubtitle" class="text-sm font-medium text-slate-600 mt-1.5 leading-relaxed">
+          Checkmate! White wins the match.
+        </p>
+
+        <div class="mt-5 grid grid-cols-3 gap-2 bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs">
+          <div>
+            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Moves</div>
+            <div id="gameOverMoves" class="text-base font-extrabold text-slate-800 mt-0.5">0</div>
+          </div>
+          <div class="border-x border-slate-200">
+            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">White Time</div>
+            <div id="gameOverWhiteTime" class="text-base font-extrabold text-slate-800 mt-0.5">00:00</div>
+          </div>
+          <div>
+            <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Black Time</div>
+            <div id="gameOverBlackTime" class="text-base font-extrabold text-slate-800 mt-0.5">00:00</div>
+          </div>
+        </div>
+
+        <div class="mt-6 flex flex-col sm:flex-row gap-2.5">
+          <button id="btnGameOverPlayAgain" type="button" class="flex-1 py-3 px-4 rounded-2xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition">
+            ✨ Play Again
+          </button>
+          <button id="btnGameOverViewBoard" type="button" class="py-3 px-4 rounded-2xl font-semibold text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition">
+            🔍 View Board
+          </button>
+        </div>
+
+        <button id="btnGameOverChangeMode" type="button" class="mt-2.5 text-xs font-semibold text-slate-500 hover:text-slate-800 transition">
+          ← Back to Mode Selection
+        </button>
+      </div>
+    </div>
+  </div>
   <!-- Step-by-Step Build & LAN Setup Modal -->
   <div id="stepGuideModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
     <div class="bg-white border border-slate-200 rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-xl overflow-hidden">
@@ -488,6 +539,58 @@
           ensureAudioCtx();
           if (!audioCtx) return;
           const now = audioCtx.currentTime;
+          // Multi-note victory / defeat / draw fanfares
+          if (type === 'victory') {
+            const notes = [523.25, 659.25, 783.99, 1046.5];
+            notes.forEach((freq, idx) => {
+              const o = audioCtx.createOscillator();
+              const g = audioCtx.createGain();
+              o.type = 'triangle';
+              o.connect(g);
+              g.connect(audioCtx.destination);
+              const start = now + idx * 0.11;
+              const dur = idx === notes.length - 1 ? 0.45 : 0.14;
+              o.frequency.setValueAtTime(freq, start);
+              g.gain.setValueAtTime(0.18, start);
+              g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+              o.start(start);
+              o.stop(start + dur);
+            });
+            return;
+          } else if (type === 'defeat') {
+            const notes = [392.00, 369.99, 349.23, 293.66];
+            notes.forEach((freq, idx) => {
+              const o = audioCtx.createOscillator();
+              const g = audioCtx.createGain();
+              o.type = 'sawtooth';
+              o.connect(g);
+              g.connect(audioCtx.destination);
+              const start = now + idx * 0.15;
+              const dur = idx === notes.length - 1 ? 0.5 : 0.16;
+              o.frequency.setValueAtTime(freq, start);
+              g.gain.setValueAtTime(0.12, start);
+              g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+              o.start(start);
+              o.stop(start + dur);
+            });
+            return;
+          } else if (type === 'draw') {
+            const notes = [440, 523.25, 440];
+            notes.forEach((freq, idx) => {
+              const o = audioCtx.createOscillator();
+              const g = audioCtx.createGain();
+              o.type = 'sine';
+              o.connect(g);
+              g.connect(audioCtx.destination);
+              const start = now + idx * 0.14;
+              o.frequency.setValueAtTime(freq, start);
+              g.gain.setValueAtTime(0.14, start);
+              g.gain.exponentialRampToValueAtTime(0.001, start + 0.2);
+              o.start(start);
+              o.stop(start + 0.2);
+            });
+            return;
+          }
           const osc = audioCtx.createOscillator();
           const gain = audioCtx.createGain();
           osc.connect(gain);
@@ -579,6 +682,110 @@
             isSpeakingNow = false;
           }
         }
+      }
+      function hideGameOverModal() {
+        const modal = document.getElementById('gameOverModal');
+        if (modal) {
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+        }
+      }
+
+      function presentGameOver(winnerColor, reasonText) {
+        const modal = document.getElementById('gameOverModal');
+        const card = document.getElementById('gameOverCard');
+        const badge = document.getElementById('gameOverBadge');
+        const icon = document.getElementById('gameOverIcon');
+        const title = document.getElementById('gameOverTitle');
+        const subtitle = document.getElementById('gameOverSubtitle');
+        const movesEl = document.getElementById('gameOverMoves');
+
+        let myPerspectiveColor = null;
+        if (gameMode === 'ai') {
+          myPerspectiveColor = 'w';
+        } else if (gameMode === 'lan' && lanRole) {
+          myPerspectiveColor = lanRole;
+        }
+
+        let outcomeType = 'draw';
+        let headingText = 'Match Drawn!';
+        let badgeText = '🤝 Draw Game';
+        let iconChar = '🤝';
+        let spokenResult = '';
+
+        if (winnerColor === 'draw') {
+          outcomeType = 'draw';
+          headingText = 'It\'s a Draw!';
+          badgeText = '🤝 Draw Game';
+          iconChar = '🤝';
+          spokenResult = `${reasonText} The game ended in a draw.`;
+        } else if (myPerspectiveColor) {
+          if (winnerColor === myPerspectiveColor) {
+            outcomeType = 'win';
+            headingText = 'Congratulations, You Won!';
+            badgeText = '🏆 Victory!';
+            iconChar = '🏆';
+            spokenResult = `Congratulations, you won! ${reasonText}`;
+          } else {
+            outcomeType = 'loss';
+            headingText = 'You Lost!';
+            badgeText = '💔 Defeat';
+            iconChar = '💔';
+            spokenResult = `Game over, you lost. ${reasonText}`;
+          }
+        } else {
+          outcomeType = 'win';
+          const winName = winnerColor === 'w' ? 'White' : 'Black';
+          headingText = `Congratulations, ${winName} Won!`;
+          badgeText = `🏆 ${winName} Wins!`;
+          iconChar = '🏆';
+          spokenResult = `Congratulations, ${winName} won! ${reasonText}`;
+        }
+
+        if (card) {
+          card.className = `vc-gameover-card is-${outcomeType} bg-white border-2 rounded-3xl max-w-md w-full p-6 shadow-2xl text-center overflow-hidden`;
+        }
+        if (title) {
+          title.textContent = headingText;
+          title.className = `is-${outcomeType}-text text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight`;
+        }
+        if (subtitle) subtitle.textContent = reasonText;
+        if (icon) {
+          icon.textContent = iconChar;
+          if (outcomeType === 'win') {
+            icon.className = 'vc-gameover-icon w-20 h-20 mx-auto rounded-3xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-5xl mb-4 shadow-sm';
+          } else if (outcomeType === 'loss') {
+            icon.className = 'vc-gameover-icon w-20 h-20 mx-auto rounded-3xl bg-red-100 border border-red-300 flex items-center justify-center text-5xl mb-4 shadow-sm';
+          } else {
+            icon.className = 'vc-gameover-icon w-20 h-20 mx-auto rounded-3xl bg-amber-50 border border-amber-200 flex items-center justify-center text-5xl mb-4 shadow-sm';
+          }
+        }
+        if (badge) {
+          badge.textContent = badgeText;
+          if (outcomeType === 'win') {
+            badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 mb-3';
+          } else if (outcomeType === 'loss') {
+            badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-red-100 text-red-700 border border-red-300 mb-3';
+          } else {
+            badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200 mb-3';
+          }
+        }
+        if (movesEl) movesEl.textContent = String(moveHistory.length);
+
+        if (modal) {
+          modal.classList.remove('hidden');
+          modal.classList.add('flex');
+        }
+
+        if (outcomeType === 'win') playTone('victory');
+        else if (outcomeType === 'loss') playTone('defeat');
+        else playTone('draw');
+
+        if (typeof window.vcTriggerGameOverEffects === 'function') {
+          setTimeout(() => window.vcTriggerGameOverEffects(outcomeType), 60);
+        }
+
+        announce(spokenResult, true);
       }
 
       // ==========================================
@@ -674,6 +881,7 @@
         lastSyncedMoveCount = 0;
         clearDrawOffer();
         clearResignArm();
+        hideGameOverModal();
         updateUI();
         drawBoard();
         if (broadcastReset) {
@@ -1017,13 +1225,13 @@
 
         if (oppLegal.length === 0) {
           gameOver = true;
+          updateUI();
           if (oppInCheck) {
             const winner = moverColor === 'w' ? 'White' : 'Black';
-            announce(`Checkmate! ${spokenDesc}. ${winner} wins!`);
+            presentGameOver(moverColor, `Checkmate! ${spokenDesc}. ${winner} wins the match.`);
           } else {
-            announce(`Stalemate! ${spokenDesc}. Draw game.`);
+            presentGameOver('draw', `Stalemate after ${spokenDesc}. No legal moves remain.`);
           }
-          updateUI();
           return;
         }
 
@@ -1106,10 +1314,9 @@
         clearDrawOffer();
         clearResignArm();
         const winner = color === 'w' ? 'b' : 'w';
-        playTone('capture');
         updateUI();
         drawBoard();
-        announce(`${colorName(color)} resigned. ${colorName(winner)} wins!`);
+        presentGameOver(winner, `${colorName(color)} resigned. ${colorName(winner)} wins the match!`);
         if (!fromRemote && gameMode === 'lan') {
           sendLanMessage({ type: 'resign', color });
         }
@@ -1137,10 +1344,9 @@
         hintMove = null;
         clearDrawOffer();
         clearResignArm();
-        playTone('move');
         updateUI();
         drawBoard();
-        announce(`${message} The game ended in a draw.`);
+        presentGameOver('draw', message);
       }
 
       function offerDraw() {
@@ -2679,6 +2885,20 @@
         document.getElementById('btnNewGame').addEventListener('click', function() {
           initGame(true);
           announce('Board is ready. White to move.');
+        });
+
+        // Game Over Modal Buttons
+        document.getElementById('btnGameOverPlayAgain').addEventListener('click', function() {
+          ensureAudioCtx();
+          initGame(true);
+          announce('New game started! White to move.');
+        });
+        document.getElementById('btnGameOverViewBoard').addEventListener('click', function() {
+          hideGameOverModal();
+        });
+        document.getElementById('btnGameOverChangeMode').addEventListener('click', function() {
+          hideGameOverModal();
+          showScreen('home');
         });
 
         document.getElementById('btnResign').addEventListener('click', function() {
